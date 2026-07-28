@@ -1,0 +1,61 @@
+{
+  "name": "cadence-lint",
+  "version": "0.1.0",
+  "description": "Lint prose structure and cadence from Markdown.",
+  "type": "module",
+  "license": "MIT",
+  "author": "MG Santos",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mintyPT/cadence-lint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mintyPT/cadence-lint/issues"
+  },
+  "homepage": "https://github.com/mintyPT/cadence-lint#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "cadence-lint": "dist/cli/index.js"
+  },
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "dev": "tsx src/cli/index.ts",
+    "test": "vitest run",
+    "pack:dry": "npm run build && npm pack --dry-run --cache .npm-cache",
+    "pack:verify": "npm run build && mkdir -p .tmp && npm pack --dry-run --json --cache .npm-cache > .tmp/npm-pack.json && node scripts/verify-package.mjs .tmp/npm-pack.json",
+    "release:check": "npm run check && npm test && npm run pack:verify"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "execa": "^9.3.0",
+    "tsup": "^8.1.0",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3",
+    "vitest": "^4.1.10"
+  }
+}

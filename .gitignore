@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.npm-cache/
+.tmp/
+*.log
+.scram.yml
+scram.md
+scram.md.lock
