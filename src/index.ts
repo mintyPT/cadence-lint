@@ -1,12 +1,15 @@
-export interface GreetingOptions {
-  punctuation?: string;
+export interface LintDiagnostic {
+  message: string;
+  line: number;
+  column: number;
 }
 
-export function createGreeting(name: string, options: GreetingOptions = {}): string {
-  const trimmed = name.trim();
-  if (trimmed.length === 0) {
-    throw new Error("Name must not be empty.");
-  }
+export interface LintResult {
+  diagnostics: LintDiagnostic[];
+}
 
-  return `Hello, ${trimmed}${options.punctuation ?? "!"}`;
+export function lintMarkdown(_markdown: string): LintResult {
+  return {
+    diagnostics: [],
+  };
 }
