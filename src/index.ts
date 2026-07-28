@@ -13,6 +13,7 @@ export {
   type SentenceSpan,
   type SentenceSplitOptions,
 } from "./sentences.js";
+export { parseStructurePattern } from "./structure-patterns.js";
 
 import type { LintDiagnostic } from "./diagnostics.js";
 
