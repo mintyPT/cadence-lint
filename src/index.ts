@@ -1,8 +1,15 @@
-export interface LintDiagnostic {
-  message: string;
-  line: number;
-  column: number;
-}
+export {
+  formatDiagnostic,
+  formatDiagnostics,
+  getDiagnosticExitCode,
+  type DiagnosticExitCode,
+  type DiagnosticLocation,
+  type DiagnosticSection,
+  type DiagnosticSeverity,
+  type LintDiagnostic,
+} from "./diagnostics.js";
+
+import type { LintDiagnostic } from "./diagnostics.js";
 
 export interface LintResult {
   diagnostics: LintDiagnostic[];

@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { lintMarkdown } from "../index.js";
+import {
+  formatDiagnostics,
+  getDiagnosticExitCode,
+  lintMarkdown,
+} from "../index.js";
 
 const program = new Command();
 
@@ -18,9 +22,8 @@ program.action((_files: string[]) => {
     return;
   }
 
-  for (const diagnostic of result.diagnostics) {
-    console.log(`${diagnostic.line}:${diagnostic.column} ${diagnostic.message}`);
-  }
+  console.log(formatDiagnostics(result.diagnostics));
+  process.exitCode = getDiagnosticExitCode(result.diagnostics);
 });
 
 program.parseAsync().catch((error: unknown) => {
