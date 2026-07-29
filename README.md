@@ -1,6 +1,6 @@
 # Cadence Lint
 
-Lint prose structure and cadence from Markdown.
+Cadence Lint is a Markdown prose structure linter. It will check documents for structural and cadence issues such as heading flow, paragraph rhythm, and prose organization.
 
 ## Setup
 
@@ -16,27 +16,28 @@ After the package is published:
 
 ```bash
 npm install cadence-lint
-npx cadence-lint greet World
+npx cadence-lint README.md
 ```
 
 ## CLI
 
 ```bash
-npm run dev -- greet World
+npm run dev -- README.md
 ```
 
 After publishing or linking the package:
 
 ```bash
-cadence-lint greet World
+cadence-lint README.md
 ```
 
 ## Library
 
 ```ts
-import { createGreeting } from "cadence-lint";
+import { lintMarkdown } from "cadence-lint";
 
-console.log(createGreeting("World"));
+const result = lintMarkdown("# Title\n\nPlain prose.\n");
+console.log(result.diagnostics);
 ```
 
 ## Package Release

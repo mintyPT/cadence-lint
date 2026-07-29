@@ -1,21 +1,27 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { createGreeting } from "../index.js";
+import { lintMarkdown } from "../index.js";
 
 const program = new Command();
 
 program
   .name("cadence-lint")
-  .description("Lint prose structure and cadence from Markdown.")
+  .description("Lint Markdown prose structure and cadence.")
+  .argument("[files...]", "Markdown files to lint")
   .version("0.1.0");
 
-program
-  .command("greet")
-  .argument("<name>", "Name to greet")
-  .option("-p, --punctuation <mark>", "Greeting punctuation", "!")
-  .action((name: string, options: { punctuation: string }) => {
-    console.log(createGreeting(name, { punctuation: options.punctuation }));
-  });
+program.action((_files: string[]) => {
+  const result = lintMarkdown("");
+
+  if (result.diagnostics.length === 0) {
+    console.log("cadence-lint: no issues found");
+    return;
+  }
+
+  for (const diagnostic of result.diagnostics) {
+    console.log(`${diagnostic.line}:${diagnostic.column} ${diagnostic.message}`);
+  }
+});
 
 program.parseAsync().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
