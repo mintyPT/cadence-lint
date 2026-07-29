@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseCadenceMarkedSections, parseMarkdownDocument } from "../src/index.js";
+import {
+  parseCadenceMarkedSections,
+  parseMarkdownDocument,
+  validateCadenceMarkers,
+} from "../src/index.js";
 
 describe("parseCadenceMarkedSections", () => {
   it("associates paragraphs between standalone opening and closing cadence markers", () => {
@@ -74,5 +78,153 @@ describe("parseCadenceMarkedSections", () => {
     ].join("\n"));
 
     expect(parseCadenceMarkedSections(document)).toEqual([]);
+  });
+});
+
+describe("validateCadenceMarkers", () => {
+  it("reports nested cadence sections as marker structure errors", () => {
+    const document = parseMarkdownDocument([
+      "<!-- cadence:intro -->",
+      "",
+      "Intro paragraph.",
+      "",
+      "<!-- cadence:detail -->",
+      "",
+      "Nested paragraph.",
+      "",
+      "<!-- /cadence:detail -->",
+      "",
+      "<!-- /cadence:intro -->",
+    ].join("\n"));
+
+    expect(validateCadenceMarkers(document, { filePath: "guide.md" })).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        message: "Nested cadence section 'detail' inside 'intro'.",
+        location: {
+          filePath: "guide.md",
+          line: 5,
+          column: 1,
+        },
+      }),
+      expect.objectContaining({
+        severity: "error",
+        message: "Unmatched closing cadence marker for section 'detail'.",
+        location: {
+          filePath: "guide.md",
+          line: 9,
+          column: 1,
+        },
+      }),
+    ]);
+  });
+
+  it("reports unmatched opening and closing cadence markers", () => {
+    const document = parseMarkdownDocument([
+      "<!-- /cadence:intro -->",
+      "",
+      "<!-- cadence:detail -->",
+      "",
+      "Detail paragraph.",
+    ].join("\n"));
+
+    expect(validateCadenceMarkers(document, { filePath: "guide.md" })).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        message: "Unmatched closing cadence marker for section 'intro'.",
+        location: {
+          filePath: "guide.md",
+          line: 1,
+          column: 1,
+        },
+      }),
+      expect.objectContaining({
+        severity: "error",
+        message: "Unmatched opening cadence marker for section 'detail'.",
+        location: {
+          filePath: "guide.md",
+          line: 3,
+          column: 1,
+        },
+      }),
+    ]);
+  });
+
+  it("reports malformed standalone cadence marker comments", () => {
+    const document = parseMarkdownDocument([
+      "<!-- cadence:section intro -->",
+      "",
+      "Plain prose.",
+    ].join("\n"));
+
+    expect(validateCadenceMarkers(document, { filePath: "guide.md" })).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        message: "Malformed cadence marker syntax.",
+        location: {
+          filePath: "guide.md",
+          line: 1,
+          column: 1,
+        },
+      }),
+    ]);
+  });
+
+  it("reports marked sections with no normal paragraphs", () => {
+    const document = parseMarkdownDocument([
+      "<!-- cadence:intro -->",
+      "",
+      "<!-- a non-paragraph comment -->",
+      "",
+      "<!-- /cadence:intro -->",
+    ].join("\n"));
+
+    expect(validateCadenceMarkers(document, { filePath: "guide.md" })).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        message: "Cadence section 'intro' must contain at least one normal paragraph.",
+        location: {
+          filePath: "guide.md",
+          line: 1,
+          column: 1,
+        },
+      }),
+    ]);
+  });
+
+  it("reports unknown cadence section names when allowed names are supplied", () => {
+    const document = parseMarkdownDocument([
+      "<!-- cadence:intro -->",
+      "",
+      "Intro paragraph.",
+      "",
+      "<!-- /cadence:intro -->",
+    ].join("\n"));
+
+    expect(
+      validateCadenceMarkers(document, {
+        filePath: "guide.md",
+        allowedSectionNames: ["summary"],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        message: "Unknown cadence section 'intro'.",
+        location: {
+          filePath: "guide.md",
+          line: 1,
+          column: 1,
+        },
+      }),
+      expect.objectContaining({
+        severity: "error",
+        message: "Unknown cadence section 'intro'.",
+        location: {
+          filePath: "guide.md",
+          line: 5,
+          column: 1,
+        },
+      }),
+    ]);
   });
 });
