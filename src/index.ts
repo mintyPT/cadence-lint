@@ -8,6 +8,11 @@ export {
   type DiagnosticSeverity,
   type LintDiagnostic,
 } from "./diagnostics.js";
+export {
+  splitSentences,
+  type SentenceSpan,
+  type SentenceSplitOptions,
+} from "./sentences.js";
 
 import type { LintDiagnostic } from "./diagnostics.js";
 
