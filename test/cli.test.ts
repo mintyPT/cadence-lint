@@ -17,7 +17,10 @@ describe("cli", () => {
   it("accepts Markdown files for linting", async () => {
     const result = await execa("tsx", ["src/cli/index.ts", "README.md"]);
 
-    expect(result.stdout).toBe("cadence-lint: no issues found");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      "README.md:3:1 warning Normal paragraph is not covered by cadence markers.",
+    );
   }, cliTestTimeout);
 
   it("requires at least one file or glob target", async () => {
@@ -50,7 +53,13 @@ describe("cli", () => {
 
     const result = await execa("tsx", ["src/cli/index.ts", join(directory, "*.md")]);
 
-    expect(result.stdout).toBe("cadence-lint: no issues found");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      `${directory}/one.md:1:1 warning Normal paragraph is not covered by cadence markers.`,
+    );
+    expect(result.stdout).toContain(
+      `${directory}/two.md:1:1 warning Normal paragraph is not covered by cadence markers.`,
+    );
   }, cliTestTimeout);
 
   it("reports a clear error for an unmatched glob target", async () => {
@@ -95,6 +104,50 @@ describe("cli", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain(`${firstFilePath}:1:1 error`);
     expect(result.stdout).toContain(`${secondFilePath}:1:1 error`);
+  }, cliTestTimeout);
+
+  it("exits zero for coverage warnings without errors", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(filePath, "Plain prose outside markers.\n");
+
+    const result = await execa("tsx", ["src/cli/index.ts", filePath]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      `${filePath}:1:1 warning Normal paragraph is not covered by cadence markers.`,
+    );
+  }, cliTestTimeout);
+
+  it("exits nonzero when coverage warnings are reported with errors", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      filePath,
+      [
+        "Plain prose outside markers.",
+        "",
+        "<!-- cadence:intro -->",
+        "",
+        "One sentence. Second sentence.",
+        "",
+        "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      ["src/cli/index.ts", "--section", "intro=1", filePath],
+      { reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain(
+      `${filePath}:1:1 warning Normal paragraph is not covered by cadence markers.`,
+    );
+    expect(result.stdout).toContain(
+      `${filePath}:3:1 error Cadence section 'intro' structure does not match expected structures.`,
+    );
   }, cliTestTimeout);
 
   it("accepts repeatable section flags", async () => {
@@ -223,14 +276,26 @@ describe("cli", () => {
       cwd: directory,
     });
 
-    expect(result.stdout).toBe("cadence-lint: no issues found");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe(
+      `${filePath}:1:1 warning Normal paragraph is not covered by cadence markers.`,
+    );
   }, cliTestTimeout);
 
   it("reports a clear error for a missing explicit config file", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");
     const configPath = join(directory, "missing.config.jsonc");
-    await writeFile(filePath, "One sentence.\n");
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:intro -->",
+        "",
+        "One sentence.",
+        "",
+        "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
 
     const result = await execa(
       "tsx",
@@ -298,7 +363,10 @@ describe("cli", () => {
       { cwd: directory },
     );
 
-    expect(result.stdout).toBe("cadence-lint: no issues found");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe(
+      `${filePath}:1:1 warning Normal paragraph is not covered by cadence markers.`,
+    );
   }, cliTestTimeout);
 
   it("reports a clear error for an unsupported effective language", async () => {

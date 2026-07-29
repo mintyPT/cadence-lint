@@ -23,6 +23,7 @@ export {
   type MarkdownParagraphBlock,
 } from "./markdown-document.js";
 export {
+  findParagraphsOutsideCadenceMarkers,
   parseCadenceMarkedSections,
   validateCadenceMarkers,
   type CadenceMarkerValidationOptions,
@@ -40,6 +41,7 @@ export {
 import type { LintDiagnostic } from "./diagnostics.js";
 import { parseMarkdownDocument } from "./markdown-document.js";
 import {
+  findParagraphsOutsideCadenceMarkers,
   parseCadenceMarkedSections,
   validateCadenceMarkers,
 } from "./cadence-markers.js";
@@ -74,11 +76,27 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
   return {
     diagnostics: [
       ...diagnostics,
+      ...lintCadenceMarkerCoverage(document, filePath),
       ...lintMarkedSectionStructures(document, filePath, options.sectionRules ?? {}, {
         protectedPatterns: options.protectedPatterns ?? [],
       }),
     ],
   };
+}
+
+function lintCadenceMarkerCoverage(
+  document: ReturnType<typeof parseMarkdownDocument>,
+  filePath: string,
+): LintDiagnostic[] {
+  return findParagraphsOutsideCadenceMarkers(document).map((paragraph) => ({
+    severity: "warning",
+    message: "Normal paragraph is not covered by cadence markers.",
+    location: {
+      filePath,
+      line: paragraph.line,
+      column: paragraph.column,
+    },
+  }));
 }
 
 function lintMarkedSectionStructures(
