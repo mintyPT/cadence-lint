@@ -392,6 +392,118 @@ describe("cli", () => {
     expect(result.stdout).toBe("");
   }, cliTestTimeout);
 
+  it("fails unsupported CLI language before resolving file targets", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const missingFilePath = join(directory, "missing.md");
+
+    const result = await execa(
+      "tsx",
+      ["src/cli/index.ts", "--language", "fr", missingFilePath],
+      { reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("cadence-lint: unsupported language: fr");
+    expect(result.stdout).toBe("");
+  }, cliTestTimeout);
+
+  it("fails invalid config regex exceptions before resolving file targets", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const configPath = join(directory, "cadence.config.jsonc");
+    const missingFilePath = join(directory, "missing.md");
+    await writeFile(
+      configPath,
+      [
+        "{",
+        '  "exceptions": ["["]',
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      ["src/cli/index.ts", "--config", configPath, missingFilePath],
+      { reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "cadence-lint: config exceptions[0] is not a valid regex:",
+    );
+    expect(result.stdout).toBe("");
+  }, cliTestTimeout);
+
+  it("fails malformed config structures before resolving file targets", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const configPath = join(directory, "cadence.config.jsonc");
+    const missingFilePath = join(directory, "missing.md");
+    await writeFile(
+      configPath,
+      [
+        "{",
+        '  "sections": {',
+        '    "intro": ["1//3"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      ["src/cli/index.ts", "--config", configPath, missingFilePath],
+      { reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe('Structure pattern segment 2 is empty in "1//3".');
+    expect(result.stdout).toBe("");
+  }, cliTestTimeout);
+
+  it("fails non-positive CLI section counts before resolving file targets", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const missingFilePath = join(directory, "missing.md");
+
+    const result = await execa(
+      "tsx",
+      ["src/cli/index.ts", "--section", "intro=1/0/1", missingFilePath],
+      { reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(
+      'Structure pattern segment 2 must be greater than zero in "1/0/1".',
+    );
+    expect(result.stdout).toBe("");
+  }, cliTestTimeout);
+
+  it("fails empty config structure lists clearly before resolving file targets", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const configPath = join(directory, "cadence.config.jsonc");
+    const missingFilePath = join(directory, "missing.md");
+    await writeFile(
+      configPath,
+      [
+        "{",
+        '  "sections": {',
+        '    "intro": []',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      ["src/cli/index.ts", "--config", configPath, missingFilePath],
+      { reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(
+      "cadence-lint: config section 'intro' must define at least one structure pattern",
+    );
+    expect(result.stdout).toBe("");
+  }, cliTestTimeout);
+
   it("fails malformed section flags before linting", async () => {
     const missingFilePath = join(tmpdir(), "cadence-lint-missing.md");
 
