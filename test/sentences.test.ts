@@ -68,4 +68,34 @@ describe("splitSentences", () => {
       },
     ]);
   });
+
+  it("uses built-in English exceptions for common abbreviations", () => {
+    expect(splitSentences("Dr. Stone arrived at 3 p.m. for tea. He stayed.", { language: "en" }))
+      .toHaveLength(2);
+  });
+
+  it("uses built-in French exceptions for common abbreviations", () => {
+    expect(splitSentences("M. Dupont parle avec Mme. Durand. Elle ecoute.", { language: "fr" }))
+      .toHaveLength(2);
+  });
+
+  it("uses built-in Portuguese exceptions for common abbreviations", () => {
+    expect(splitSentences("O Sr. Silva falou com a Sra. Costa. Ela respondeu.", { language: "pt" }))
+      .toHaveLength(2);
+  });
+
+  it("merges user-provided exceptions with language built-ins", () => {
+    expect(
+      splitSentences("Dr. Stone joined Acme Inc. for lunch. It worked.", {
+        language: "en",
+        protectedPatterns: [/\bInc\./],
+      }),
+    ).toHaveLength(2);
+  });
+
+  it("rejects unsupported languages", () => {
+    expect(() => splitSentences("One sentence.", { language: "es" })).toThrow(
+      "cadence-lint: unsupported language: es",
+    );
+  });
 });

@@ -9,7 +9,10 @@ export {
   type LintDiagnostic,
 } from "./diagnostics.js";
 export {
+  supportedSentenceLanguages,
   splitSentences,
+  validateSentenceLanguage,
+  type SentenceLanguage,
   type SentenceSpan,
   type SentenceSplitOptions,
 } from "./sentences.js";
@@ -46,7 +49,7 @@ import {
   validateCadenceMarkers,
 } from "./cadence-markers.js";
 import { matchSequence } from "./sequence-matcher.js";
-import { splitSentences } from "./sentences.js";
+import { splitSentences, validateSentenceLanguage } from "./sentences.js";
 
 export type SectionStructureRules = Record<string, readonly (readonly number[])[]>;
 
@@ -68,6 +71,8 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
   const allowedSectionNames =
     options.allowedSectionNames ??
     (options.sectionRules === undefined ? undefined : Object.keys(options.sectionRules));
+  const language = options.language ?? "en";
+  validateSentenceLanguage(language);
   const diagnostics = validateCadenceMarkers(document, {
     filePath,
     allowedSectionNames,
@@ -78,6 +83,7 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
       ...diagnostics,
       ...lintCadenceMarkerCoverage(document, filePath),
       ...lintMarkedSectionStructures(document, filePath, options.sectionRules ?? {}, {
+        language,
         protectedPatterns: options.protectedPatterns ?? [],
       }),
     ],
@@ -103,7 +109,7 @@ function lintMarkedSectionStructures(
   document: ReturnType<typeof parseMarkdownDocument>,
   filePath: string,
   sectionRules: SectionStructureRules,
-  options: { protectedPatterns: readonly RegExp[] },
+  options: { language: string; protectedPatterns: readonly RegExp[] },
 ): LintDiagnostic[] {
   const diagnostics: LintDiagnostic[] = [];
 
@@ -117,6 +123,7 @@ function lintMarkedSectionStructures(
     const observedStructure = section.paragraphs.map(
       (paragraph) =>
         splitSentences(paragraph.text, {
+          language: options.language,
           protectedPatterns: options.protectedPatterns,
         }).length,
     );

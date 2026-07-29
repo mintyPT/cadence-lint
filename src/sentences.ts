@@ -4,7 +4,12 @@ export interface SentenceSpan {
   end: number;
 }
 
+export const supportedSentenceLanguages = ["en", "fr", "pt"] as const;
+
+export type SentenceLanguage = (typeof supportedSentenceLanguages)[number];
+
 export interface SentenceSplitOptions {
+  language?: string;
   protectedPatterns?: readonly RegExp[];
 }
 
@@ -13,13 +18,35 @@ interface ProtectedSpan {
   end: number;
 }
 
+const builtInProtectedPatternsByLanguage: Record<
+  SentenceLanguage,
+  readonly RegExp[]
+> = {
+  en: [
+    /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc)\./i,
+    /\b(?:a\.m|p\.m|e\.g|i\.e)\./i,
+    /(?:\b[A-Z]\.\s*){2,}/,
+    /\b\d+\.\d+\b/,
+  ],
+  fr: [
+    /\b(?:M|Mme|Mlle|Dr|Pr|St|Ste|etc)\./i,
+    /(?:\b[A-Z]\.\s*){2,}/,
+    /\b\d+\.\d+\b/,
+  ],
+  pt: [
+    /\b(?:Sr|Sra|Srta|Dr|Dra|Prof|Profa|etc)\./i,
+    /(?:\b[A-Z]\.\s*){2,}/,
+    /\b\d+\.\d+\b/,
+  ],
+};
+
 export function splitSentences(
   paragraph: string,
   options: SentenceSplitOptions = {},
 ): SentenceSpan[] {
   const protectedSpans = collectProtectedSpans(
     paragraph,
-    options.protectedPatterns ?? [],
+    getProtectedPatterns(options),
   );
   const sentences: SentenceSpan[] = [];
   let sentenceStart = nextNonWhitespaceIndex(paragraph, 0);
@@ -56,6 +83,33 @@ export function splitSentences(
   }
 
   return sentences;
+}
+
+export function validateSentenceLanguage(
+  language: string,
+): asserts language is SentenceLanguage {
+  if (!isSupportedSentenceLanguage(language)) {
+    throw new Error(`cadence-lint: unsupported language: ${language}`);
+  }
+}
+
+export function isSupportedSentenceLanguage(
+  language: string,
+): language is SentenceLanguage {
+  return (supportedSentenceLanguages as readonly string[]).includes(language);
+}
+
+function getProtectedPatterns(options: SentenceSplitOptions): readonly RegExp[] {
+  if (options.language === undefined) {
+    return options.protectedPatterns ?? [];
+  }
+
+  validateSentenceLanguage(options.language);
+
+  return [
+    ...builtInProtectedPatternsByLanguage[options.language],
+    ...(options.protectedPatterns ?? []),
+  ];
 }
 
 function collectProtectedSpans(
