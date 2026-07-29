@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
@@ -42,9 +43,28 @@ for (const binPath of binEntries) {
   if ((mode & 0o111) === 0) {
     fail(`${binPath} is not executable in the built output.`);
   }
+
+  verifyExecutableBin(binPath);
 }
 
 console.log(`Verified ${packageJson.name}@${packageJson.version} package dry-run (${packResult.files.length} files).`);
+
+function verifyExecutableBin(binPath) {
+  const executablePath = binPath.startsWith("/") ? binPath : `./${binPath}`;
+
+  try {
+    execFileSync(executablePath, ["--help"], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const details =
+      error instanceof Error && "stderr" in error
+        ? String(error.stderr).trim()
+        : String(error);
+    fail(`${binPath} did not execute successfully with --help: ${details}`);
+  }
+}
 
 function fail(message) {
   console.error(message);
