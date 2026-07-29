@@ -22,6 +22,12 @@ export {
   type MarkdownParagraph,
   type MarkdownParagraphBlock,
 } from "./markdown-document.js";
+export {
+  matchSequence,
+  type SequenceMatchFail,
+  type SequenceMatchPass,
+  type SequenceMatchResult,
+} from "./sequence-matcher.js";
 
 import type { LintDiagnostic } from "./diagnostics.js";
 
