@@ -50,8 +50,10 @@ export type SectionStructureRules = Record<string, readonly (readonly number[])[
 
 export interface LintMarkdownOptions {
   filePath?: string;
+  language?: string;
   allowedSectionNames?: readonly string[];
   sectionRules?: SectionStructureRules;
+  protectedPatterns?: readonly RegExp[];
 }
 
 export interface LintResult {
@@ -72,7 +74,9 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
   return {
     diagnostics: [
       ...diagnostics,
-      ...lintMarkedSectionStructures(document, filePath, options.sectionRules ?? {}),
+      ...lintMarkedSectionStructures(document, filePath, options.sectionRules ?? {}, {
+        protectedPatterns: options.protectedPatterns ?? [],
+      }),
     ],
   };
 }
@@ -81,6 +85,7 @@ function lintMarkedSectionStructures(
   document: ReturnType<typeof parseMarkdownDocument>,
   filePath: string,
   sectionRules: SectionStructureRules,
+  options: { protectedPatterns: readonly RegExp[] },
 ): LintDiagnostic[] {
   const diagnostics: LintDiagnostic[] = [];
 
@@ -92,7 +97,10 @@ function lintMarkedSectionStructures(
     }
 
     const observedStructure = section.paragraphs.map(
-      (paragraph) => splitSentences(paragraph.text).length,
+      (paragraph) =>
+        splitSentences(paragraph.text, {
+          protectedPatterns: options.protectedPatterns,
+        }).length,
     );
     const result = matchSequence(
       observedStructure,

@@ -3,6 +3,7 @@ import { Command } from "commander";
 import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { loadCadenceConfig } from "./config.js";
 import {
   formatDiagnostics,
   getDiagnosticExitCode,
@@ -30,11 +31,15 @@ program
     collectSectionRule,
     [] as string[],
   )
+  .option("--language <language>", "Language code for prose rules.")
+  .option("--config <path>", "Path to a cadence JSONC config file.")
   .version("0.1.0");
 
 interface CliOptions {
   section: string[];
   sectionRule: string[];
+  language?: string;
+  config?: string;
 }
 
 program.action(async (files: string[], options: CliOptions) => {
@@ -42,10 +47,19 @@ program.action(async (files: string[], options: CliOptions) => {
     throw new Error("cadence-lint: at least one file or glob target is required");
   }
 
-  const sectionRules = parseSectionRules([
+  const config = await loadCadenceConfig({
+    cwd: process.cwd(),
+    configPath: options.config,
+  });
+  const cliSectionRules = parseSectionRules([
     ...options.sectionRule,
     ...options.section,
   ]);
+  const hasCliSectionRules =
+    options.sectionRule.length > 0 || options.section.length > 0;
+  const sectionRules = hasCliSectionRules ? cliSectionRules : config.sectionRules;
+  const language = options.language ?? config.language;
+  validateLanguage(language);
   const diagnostics: LintDiagnostic[] = [];
   const filePaths = await resolveFileTargets(files);
 
@@ -53,6 +67,8 @@ program.action(async (files: string[], options: CliOptions) => {
     const markdown = await readFile(filePath, "utf8");
     const result = lintMarkdown(markdown, {
       filePath,
+      language,
+      protectedPatterns: config.protectedPatterns,
       sectionRules,
     });
     diagnostics.push(...result.diagnostics);
@@ -75,6 +91,12 @@ program.parseAsync().catch((error: unknown) => {
 
 function collectSectionRule(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function validateLanguage(language: string): void {
+  if (language !== "en") {
+    throw new Error(`cadence-lint: unsupported language: ${language}`);
+  }
 }
 
 async function resolveFileTargets(targets: readonly string[]): Promise<string[]> {
