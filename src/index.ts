@@ -39,11 +39,19 @@ export {
 
 import type { LintDiagnostic } from "./diagnostics.js";
 import { parseMarkdownDocument } from "./markdown-document.js";
-import { validateCadenceMarkers } from "./cadence-markers.js";
+import {
+  parseCadenceMarkedSections,
+  validateCadenceMarkers,
+} from "./cadence-markers.js";
+import { matchSequence } from "./sequence-matcher.js";
+import { splitSentences } from "./sentences.js";
+
+export type SectionStructureRules = Record<string, readonly (readonly number[])[]>;
 
 export interface LintMarkdownOptions {
   filePath?: string;
   allowedSectionNames?: readonly string[];
+  sectionRules?: SectionStructureRules;
 }
 
 export interface LintResult {
@@ -52,11 +60,70 @@ export interface LintResult {
 
 export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}): LintResult {
   const document = parseMarkdownDocument(markdown);
+  const filePath = options.filePath ?? "<input>";
+  const allowedSectionNames =
+    options.allowedSectionNames ??
+    (options.sectionRules === undefined ? undefined : Object.keys(options.sectionRules));
+  const diagnostics = validateCadenceMarkers(document, {
+    filePath,
+    allowedSectionNames,
+  });
 
   return {
-    diagnostics: validateCadenceMarkers(document, {
-      filePath: options.filePath ?? "<input>",
-      allowedSectionNames: options.allowedSectionNames,
-    }),
+    diagnostics: [
+      ...diagnostics,
+      ...lintMarkedSectionStructures(document, filePath, options.sectionRules ?? {}),
+    ],
   };
+}
+
+function lintMarkedSectionStructures(
+  document: ReturnType<typeof parseMarkdownDocument>,
+  filePath: string,
+  sectionRules: SectionStructureRules,
+): LintDiagnostic[] {
+  const diagnostics: LintDiagnostic[] = [];
+
+  for (const section of parseCadenceMarkedSections(document)) {
+    const allowedStructures = sectionRules[section.name];
+
+    if (allowedStructures === undefined || section.paragraphs.length === 0) {
+      continue;
+    }
+
+    const observedStructure = section.paragraphs.map(
+      (paragraph) => splitSentences(paragraph.text).length,
+    );
+    const result = matchSequence(
+      observedStructure,
+      allowedStructures.map((structure) => [...structure]),
+    );
+
+    if (result.passed) {
+      continue;
+    }
+
+    const suffixDetail =
+      result.unmatchedSuffixStart > 0
+        ? ` Unmatched suffix starts at paragraph ${result.unmatchedSuffixStart + 1}.`
+        : "";
+
+    diagnostics.push({
+      severity: "error",
+      message: `Cadence section '${section.name}' structure does not match expected structures.${suffixDetail}`,
+      location: {
+        filePath,
+        line: section.openingMarker.line,
+        column: section.openingMarker.column,
+      },
+      observedStructure: formatStructure(observedStructure),
+      expectedStructures: allowedStructures.map(formatStructure),
+    });
+  }
+
+  return diagnostics;
+}
+
+function formatStructure(structure: readonly number[]): string {
+  return structure.join("/");
 }
