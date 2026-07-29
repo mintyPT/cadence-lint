@@ -23,6 +23,14 @@ export {
   type MarkdownParagraphBlock,
 } from "./markdown-document.js";
 export {
+  parseCadenceMarkedSections,
+  validateCadenceMarkers,
+  type CadenceMarkerValidationOptions,
+  type CadenceMarkedSection,
+  type CadenceMarker,
+  type CadenceMarkerType,
+} from "./cadence-markers.js";
+export {
   matchSequence,
   type SequenceMatchFail,
   type SequenceMatchPass,
@@ -30,13 +38,25 @@ export {
 } from "./sequence-matcher.js";
 
 import type { LintDiagnostic } from "./diagnostics.js";
+import { parseMarkdownDocument } from "./markdown-document.js";
+import { validateCadenceMarkers } from "./cadence-markers.js";
+
+export interface LintMarkdownOptions {
+  filePath?: string;
+  allowedSectionNames?: readonly string[];
+}
 
 export interface LintResult {
   diagnostics: LintDiagnostic[];
 }
 
-export function lintMarkdown(_markdown: string): LintResult {
+export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}): LintResult {
+  const document = parseMarkdownDocument(markdown);
+
   return {
-    diagnostics: [],
+    diagnostics: validateCadenceMarkers(document, {
+      filePath: options.filePath ?? "<input>",
+      allowedSectionNames: options.allowedSectionNames,
+    }),
   };
 }
