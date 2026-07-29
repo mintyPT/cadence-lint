@@ -7,4 +7,24 @@ describe("lintMarkdown", () => {
       diagnostics: [],
     });
   });
+
+  it("reports invalid cadence marker state as lint errors", () => {
+    expect(
+      lintMarkdown("<!-- cadence:intro -->\n", {
+        filePath: "guide.md",
+      }),
+    ).toEqual({
+      diagnostics: [
+        expect.objectContaining({
+          severity: "error",
+          message: "Unmatched opening cadence marker for section 'intro'.",
+          location: {
+            filePath: "guide.md",
+            line: 1,
+            column: 1,
+          },
+        }),
+      ],
+    });
+  });
 });
