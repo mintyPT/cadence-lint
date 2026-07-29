@@ -180,6 +180,150 @@ describe("cli", () => {
     expect(result.stdout).toBe("cadence-lint: no issues found");
   }, cliTestTimeout);
 
+  it("loads section rules and regex exceptions from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        "  // JSONC is accepted.",
+        '  "language": "en",',
+        '  "sections": {',
+        '    "intro": ["1"],',
+        "  },",
+        '  "exceptions": ["Dr\\\\."],',
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:intro -->",
+        "",
+        "Dr. Stone arrived.",
+        "",
+        "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
+
+    const result = await execa("tsx", [join(process.cwd(), "src/cli/index.ts"), filePath], {
+      cwd: directory,
+    });
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
+  it("allows a missing auto-discovered config file", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(filePath, "One sentence.\n");
+
+    const result = await execa("tsx", [join(process.cwd(), "src/cli/index.ts"), filePath], {
+      cwd: directory,
+    });
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
+  it("reports a clear error for a missing explicit config file", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    const configPath = join(directory, "missing.config.jsonc");
+    await writeFile(filePath, "One sentence.\n");
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--config", configPath, filePath],
+      {
+        cwd: directory,
+        reject: false,
+      },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(`cadence-lint: config file not found: ${configPath}`);
+    expect(result.stdout).toBe("");
+  }, cliTestTimeout);
+
+  it("lets section flags override config section rules", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sections": {',
+        '    "intro": ["2"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:intro -->",
+        "",
+        "One sentence.",
+        "",
+        "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--section", "intro=1", filePath],
+      { cwd: directory },
+    );
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
+  it("lets the language flag override the config language", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "language": "fr"',
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(filePath, "One sentence.\n");
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--language", "en", filePath],
+      { cwd: directory },
+    );
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
+  it("reports a clear error for an unsupported effective language", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "language": "fr"',
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(filePath, "One sentence.\n");
+
+    const result = await execa("tsx", [join(process.cwd(), "src/cli/index.ts"), filePath], {
+      cwd: directory,
+      reject: false,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("cadence-lint: unsupported language: fr");
+    expect(result.stdout).toBe("");
+  }, cliTestTimeout);
+
   it("fails malformed section flags before linting", async () => {
     const missingFilePath = join(tmpdir(), "cadence-lint-missing.md");
 

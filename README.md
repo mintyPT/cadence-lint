@@ -31,6 +31,25 @@ After publishing or linking the package:
 cadence-lint README.md
 ```
 
+Cadence Lint auto-discovers `cadence.config.jsonc` from the current working
+directory when it exists. A missing auto-discovered config is allowed. Use
+`--config <path>` to load a specific config file.
+
+```jsonc
+{
+  "language": "en",
+  "sections": {
+    "intro": ["1/3/1", "1/5/1"]
+  },
+  "exceptions": ["Dr\\."]
+}
+```
+
+`sections` maps cadence section names to allowed sentence-count structures.
+`exceptions` is an array of regex strings protected during sentence splitting.
+The defaults are language `en` and no section structures. CLI `--language`,
+`--section`, and `--section-rule` values override config values.
+
 ## Library
 
 ```ts
