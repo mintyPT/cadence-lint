@@ -19,6 +19,12 @@ program
   .description("Lint Markdown prose structure and cadence.")
   .argument("[files...]", "Markdown files to lint")
   .option(
+    "--section <section=pattern[,pattern...]>",
+    "Allowed sentence-count structure for a cadence section, for example intro=1/3/1,1/5/1. Repeat for sections.",
+    collectSectionRule,
+    [] as string[],
+  )
+  .option(
     "--section-rule <section=pattern>",
     "Allowed sentence-count structure for a cadence section, for example intro=1/3/1. Repeat for alternatives.",
     collectSectionRule,
@@ -27,6 +33,7 @@ program
   .version("0.1.0");
 
 interface CliOptions {
+  section: string[];
   sectionRule: string[];
 }
 
@@ -35,7 +42,10 @@ program.action(async (files: string[], options: CliOptions) => {
     throw new Error("cadence-lint: at least one file or glob target is required");
   }
 
-  const sectionRules = parseSectionRules(options.sectionRule);
+  const sectionRules = parseSectionRules([
+    ...options.sectionRule,
+    ...options.section,
+  ]);
   const diagnostics: LintDiagnostic[] = [];
   const filePaths = await resolveFileTargets(files);
 
@@ -213,9 +223,12 @@ function parseSectionRules(rules: readonly string[]): SectionStructureRules {
     }
 
     const sectionName = rule.slice(0, separatorIndex);
-    const pattern = rule.slice(separatorIndex + 1);
+    const patterns = rule.slice(separatorIndex + 1).split(",");
     sectionRules[sectionName] ??= [];
-    sectionRules[sectionName].push(parseStructurePattern(pattern));
+
+    for (const pattern of patterns) {
+      sectionRules[sectionName].push(parseStructurePattern(pattern));
+    }
   }
 
   return sectionRules;
