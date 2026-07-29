@@ -23,6 +23,12 @@ export {
   type MarkdownParagraphBlock,
 } from "./markdown-document.js";
 export {
+  parseCadenceMarkedSections,
+  type CadenceMarkedSection,
+  type CadenceMarker,
+  type CadenceMarkerType,
+} from "./cadence-markers.js";
+export {
   matchSequence,
   type SequenceMatchFail,
   type SequenceMatchPass,
