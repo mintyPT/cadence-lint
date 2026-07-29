@@ -75,6 +75,23 @@ export function parseCadenceMarkedSections(
   return sections;
 }
 
+export function findParagraphsOutsideCadenceMarkers(
+  document: MarkdownDocument,
+): MarkdownParagraphBlock[] {
+  const markedParagraphs = new Set<MarkdownParagraphBlock>();
+
+  for (const section of parseCadenceMarkedSections(document)) {
+    for (const paragraph of section.paragraphs) {
+      markedParagraphs.add(paragraph);
+    }
+  }
+
+  return document.blocks.filter(
+    (block): block is MarkdownParagraphBlock =>
+      block.type === "paragraph" && !markedParagraphs.has(block),
+  );
+}
+
 export function validateCadenceMarkers(
   document: MarkdownDocument,
   options: CadenceMarkerValidationOptions,

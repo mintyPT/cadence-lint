@@ -2,8 +2,41 @@ import { describe, expect, it } from "vitest";
 import { lintMarkdown } from "../src/index.js";
 
 describe("lintMarkdown", () => {
-  it("returns an empty lint result when no section rules are configured", () => {
+  it("warns for normal paragraphs outside cadence markers", () => {
     expect(lintMarkdown("# Title\n\nPlain prose.\n")).toEqual({
+      diagnostics: [
+        expect.objectContaining({
+          severity: "warning",
+          message: "Normal paragraph is not covered by cadence markers.",
+          location: {
+            filePath: "<input>",
+            line: 3,
+            column: 1,
+          },
+        }),
+      ],
+    });
+  });
+
+  it("does not warn for headings, lists, code blocks, and tables", () => {
+    expect(
+      lintMarkdown(
+        [
+          "# Title",
+          "",
+          "- List item",
+          "- Another list item",
+          "",
+          "```ts",
+          "const value = 1;",
+          "```",
+          "",
+          "| Column |",
+          "| --- |",
+          "| Value |",
+        ].join("\n"),
+      ),
+    ).toEqual({
       diagnostics: [],
     });
   });
