@@ -97,6 +97,134 @@ describe("cli", () => {
     expect(result.stdout).toContain(`${secondFilePath}:1:1 error`);
   }, cliTestTimeout);
 
+  it("accepts repeatable section flags", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:intro -->",
+        "",
+        "One sentence.",
+        "",
+        "<!-- /cadence:intro -->",
+        "",
+        "<!-- cadence:body -->",
+        "",
+        "First sentence. Second sentence.",
+        "",
+        "<!-- /cadence:body -->",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [
+        "src/cli/index.ts",
+        "--section",
+        "intro=1",
+        "--section",
+        "body=2",
+        filePath,
+      ],
+    );
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
+  it("accepts multiple patterns in one section flag", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:intro -->",
+        "",
+        "One sentence.",
+        "",
+        "First sentence. Second sentence. Third sentence. Fourth sentence. Fifth sentence.",
+        "",
+        "Last sentence.",
+        "",
+        "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      ["src/cli/index.ts", "--section", "intro=1/3/1,1/5/1", filePath],
+    );
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
+  it("keeps accepting legacy section-rule flags", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:intro -->",
+        "",
+        "One sentence.",
+        "",
+        "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      ["src/cli/index.ts", "--section-rule", "intro=1", filePath],
+    );
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
+  it("fails malformed section flags before linting", async () => {
+    const missingFilePath = join(tmpdir(), "cadence-lint-missing.md");
+
+    const result = await execa(
+      "tsx",
+      ["src/cli/index.ts", "--section", "intro=", missingFilePath],
+      { reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(
+      'Section rule must use the format <section>=<pattern>; received "intro=".',
+    );
+    expect(result.stdout).toBe("");
+  }, cliTestTimeout);
+
+  it("reports unknown marked sections when section flags configure other rules", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:body -->",
+        "",
+        "One sentence.",
+        "",
+        "<!-- /cadence:body -->",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      ["src/cli/index.ts", "--section", "intro=1", filePath],
+      { reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain(
+      `${filePath}:1:1 error Unknown cadence section 'body'.`,
+    );
+    expect(result.stdout).toContain(
+      `${filePath}:5:1 error Unknown cadence section 'body'.`,
+    );
+  }, cliTestTimeout);
+
   it("reports structure errors from marked Markdown files", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");
