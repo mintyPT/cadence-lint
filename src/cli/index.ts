@@ -4,6 +4,7 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { loadCadenceConfig } from "./config.js";
+import { formatDiagnosticsAsJson } from "../diagnostics.js";
 import {
   formatDiagnostics,
   getDiagnosticExitCode,
@@ -33,6 +34,7 @@ program
   )
   .option("--language <language>", "Language code for prose rules.")
   .option("--config <path>", "Path to a cadence JSONC config file.")
+  .option("--format <format>", "Output format: human or json.", "human")
   .version("0.1.0");
 
 interface CliOptions {
@@ -40,6 +42,7 @@ interface CliOptions {
   sectionRule: string[];
   language?: string;
   config?: string;
+  format: string;
 }
 
 program.action(async (files: string[], options: CliOptions) => {
@@ -60,6 +63,7 @@ program.action(async (files: string[], options: CliOptions) => {
   const sectionRules = hasCliSectionRules ? cliSectionRules : config.sectionRules;
   const language = options.language ?? config.language;
   validateLanguage(language);
+  validateFormat(options.format);
   const diagnostics: LintDiagnostic[] = [];
   const filePaths = await resolveFileTargets(files);
 
@@ -75,11 +79,11 @@ program.action(async (files: string[], options: CliOptions) => {
   }
 
   if (diagnostics.length === 0) {
-    console.log("cadence-lint: no issues found");
+    console.log(formatNoIssues(options.format));
     return;
   }
 
-  console.log(formatDiagnostics(diagnostics));
+  console.log(formatDiagnosticOutput(diagnostics, options.format));
   process.exitCode = getDiagnosticExitCode(diagnostics);
 });
 
@@ -97,6 +101,27 @@ function validateLanguage(language: string): void {
   if (language !== "en") {
     throw new Error(`cadence-lint: unsupported language: ${language}`);
   }
+}
+
+function validateFormat(format: string): void {
+  if (format !== "human" && format !== "json") {
+    throw new Error(`cadence-lint: unsupported output format: ${format}`);
+  }
+}
+
+function formatNoIssues(format: string): string {
+  return format === "json"
+    ? formatDiagnosticsAsJson([])
+    : "cadence-lint: no issues found";
+}
+
+function formatDiagnosticOutput(
+  diagnostics: readonly LintDiagnostic[],
+  format: string,
+): string {
+  return format === "json"
+    ? formatDiagnosticsAsJson(diagnostics)
+    : formatDiagnostics(diagnostics);
 }
 
 async function resolveFileTargets(targets: readonly string[]): Promise<string[]> {
