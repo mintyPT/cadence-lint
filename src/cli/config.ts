@@ -80,6 +80,13 @@ function readSectionRules(config: unknown): SectionStructureRules {
 
   for (const [sectionName, patterns] of Object.entries(config.sections)) {
     const patternValues = Array.isArray(patterns) ? patterns : [patterns];
+
+    if (patternValues.length === 0) {
+      throw new Error(
+        `cadence-lint: config section '${sectionName}' must define at least one structure pattern`,
+      );
+    }
+
     sectionRules[sectionName] = patternValues.map((pattern) => {
       if (typeof pattern !== "string") {
         throw new Error(
