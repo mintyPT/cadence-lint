@@ -10,6 +10,7 @@ import {
   getDiagnosticExitCode,
   lintMarkdown,
   parseStructurePattern,
+  validateSentenceLanguage,
   type LintDiagnostic,
   type SectionStructureRules,
 } from "../index.js";
@@ -62,7 +63,7 @@ program.action(async (files: string[], options: CliOptions) => {
     options.sectionRule.length > 0 || options.section.length > 0;
   const sectionRules = hasCliSectionRules ? cliSectionRules : config.sectionRules;
   const language = options.language ?? config.language;
-  validateLanguage(language);
+  validateSentenceLanguage(language);
   validateFormat(options.format);
   const diagnostics: LintDiagnostic[] = [];
   const filePaths = await resolveFileTargets(files);
@@ -95,12 +96,6 @@ program.parseAsync().catch((error: unknown) => {
 
 function collectSectionRule(value: string, previous: string[]): string[] {
   return [...previous, value];
-}
-
-function validateLanguage(language: string): void {
-  if (language !== "en") {
-    throw new Error(`cadence-lint: unsupported language: ${language}`);
-  }
 }
 
 function validateFormat(format: string): void {

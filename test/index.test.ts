@@ -168,4 +168,25 @@ describe("lintMarkdown", () => {
       ],
     });
   });
+
+  it("uses the configured language when counting sentences in marked sections", () => {
+    const markdown = [
+      "<!-- cadence:intro -->",
+      "",
+      "M. Dupont parle avec Mme. Durand. Elle ecoute.",
+      "",
+      "<!-- /cadence:intro -->",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        language: "fr",
+        sectionRules: {
+          intro: [[2]],
+        },
+      }),
+    ).toEqual({
+      diagnostics: [],
+    });
+  });
 });

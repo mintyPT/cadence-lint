@@ -526,6 +526,38 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("uses the configured language built-ins when linting section structures", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "language": "fr",',
+        '  "sections": {',
+        '    "intro": ["2"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:intro -->",
+        "",
+        "M. Dupont parle avec Mme. Durand. Elle ecoute.",
+        "",
+        "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
+
+    const result = await execa("tsx", [join(process.cwd(), "src/cli/index.ts"), filePath], {
+      cwd: directory,
+    });
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
   it("reports a clear error for an unsupported effective language", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");
@@ -533,7 +565,7 @@ describe("cli", () => {
       join(directory, "cadence.config.jsonc"),
       [
         "{",
-        '  "language": "fr"',
+        '  "language": "es"',
         "}",
       ].join("\n"),
     );
@@ -545,7 +577,7 @@ describe("cli", () => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe("cadence-lint: unsupported language: fr");
+    expect(result.stderr).toBe("cadence-lint: unsupported language: es");
     expect(result.stdout).toBe("");
   }, cliTestTimeout);
 
@@ -555,12 +587,12 @@ describe("cli", () => {
 
     const result = await execa(
       "tsx",
-      ["src/cli/index.ts", "--language", "fr", missingFilePath],
+      ["src/cli/index.ts", "--language", "es", missingFilePath],
       { reject: false },
     );
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe("cadence-lint: unsupported language: fr");
+    expect(result.stderr).toBe("cadence-lint: unsupported language: es");
     expect(result.stdout).toBe("");
   }, cliTestTimeout);
 
