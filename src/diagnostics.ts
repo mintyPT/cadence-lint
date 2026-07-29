@@ -19,6 +19,7 @@ export interface LintDiagnostic {
   section?: DiagnosticSection;
   observedStructure?: string;
   expectedStructures?: readonly string[];
+  unmatchedSuffixStart?: number;
 }
 
 export type DiagnosticExitCode = 0 | 1;
@@ -36,6 +37,12 @@ export function formatDiagnostic(diagnostic: LintDiagnostic): string {
 
 export function formatDiagnostics(diagnostics: readonly LintDiagnostic[]): string {
   return diagnostics.map(formatDiagnostic).join("\n");
+}
+
+export function formatDiagnosticsAsJson(
+  diagnostics: readonly LintDiagnostic[],
+): string {
+  return JSON.stringify({ diagnostics }, null, 2);
 }
 
 export function getDiagnosticExitCode(

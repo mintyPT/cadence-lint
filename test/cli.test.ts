@@ -23,6 +23,163 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("emits valid JSON diagnostics when requested", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(filePath, "Plain prose outside markers.\n");
+
+    const result = await execa("tsx", [
+      "src/cli/index.ts",
+      "--format",
+      "json",
+      filePath,
+    ]);
+
+    expect(JSON.parse(result.stdout)).toEqual({
+      diagnostics: [
+        {
+          severity: "warning",
+          message: "Normal paragraph is not covered by cadence markers.",
+          location: {
+            filePath,
+            line: 1,
+            column: 1,
+          },
+        },
+      ],
+    });
+  }, cliTestTimeout);
+
+  it("emits JSON errors and warnings with stable diagnostic fields", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      filePath,
+      [
+        "Plain prose outside markers.",
+        "",
+        "<!-- cadence:intro -->",
+        "",
+        "One sentence.",
+        "",
+        "Second paragraph has two sentences. It mismatches.",
+        "",
+        "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [
+        "src/cli/index.ts",
+        "--format",
+        "json",
+        "--section-rule",
+        "intro=1/1",
+        filePath,
+      ],
+      { reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toEqual({
+      diagnostics: [
+        {
+          severity: "warning",
+          message: "Normal paragraph is not covered by cadence markers.",
+          location: {
+            filePath,
+            line: 1,
+            column: 1,
+          },
+        },
+        {
+          severity: "error",
+          message:
+            "Cadence section 'intro' structure does not match expected structures.",
+          location: {
+            filePath,
+            line: 3,
+            column: 1,
+          },
+          observedStructure: "1/2",
+          expectedStructures: ["1/1"],
+        },
+      ],
+    });
+  }, cliTestTimeout);
+
+  it("emits unmatched suffix start in JSON structure diagnostics", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:intro -->",
+        "",
+        "One sentence.",
+        "",
+        "First sentence. Second sentence. Third sentence.",
+        "",
+        "Last sentence.",
+        "",
+        "Unexpected sentence count. This paragraph does not match. The suffix starts here. Still wrong.",
+        "",
+        "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [
+        "src/cli/index.ts",
+        "--format",
+        "json",
+        "--section-rule",
+        "intro=1/3/1,2",
+        filePath,
+      ],
+      { reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        observedStructure: "1/3/1/4",
+        expectedStructures: ["1/3/1", "2"],
+        unmatchedSuffixStart: 4,
+      }),
+    );
+  }, cliTestTimeout);
+
+  it("emits an empty JSON diagnostics list when no issues are found", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:intro -->",
+        "",
+        "One sentence.",
+        "",
+        "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
+
+    const result = await execa("tsx", [
+      "src/cli/index.ts",
+      "--format",
+      "json",
+      "--section-rule",
+      "intro=1",
+      filePath,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ diagnostics: [] });
+  }, cliTestTimeout);
+
   it("requires at least one file or glob target", async () => {
     const result = await execa("tsx", ["src/cli/index.ts"], { reject: false });
 

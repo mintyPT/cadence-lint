@@ -144,6 +144,9 @@ function lintMarkedSectionStructures(
       },
       observedStructure: formatStructure(observedStructure),
       expectedStructures: allowedStructures.map(formatStructure),
+      ...(result.unmatchedSuffixStart > 0
+        ? { unmatchedSuffixStart: result.unmatchedSuffixStart + 1 }
+        : {}),
     });
   }
 

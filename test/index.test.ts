@@ -102,6 +102,7 @@ describe("lintMarkdown", () => {
           },
           observedStructure: "1/3/1/4",
           expectedStructures: ["1/3/1", "2"],
+          unmatchedSuffixStart: 4,
         }),
       ],
     });
