@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { parseStructurePattern, type SectionStructureRules } from "../index.js";
+import {
+  parseStructurePattern,
+  type SectionStructure,
+  type SectionStructureRules,
+  type SectionStructureSegment,
+} from "../index.js";
 
 export interface CadenceCliConfig {
   language: string;
@@ -76,10 +81,14 @@ function readSectionRules(config: unknown): SectionStructureRules {
     throw new Error("cadence-lint: config sections must be an object");
   }
 
-  const sectionRules: Record<string, number[][]> = {};
+  const sectionRules: SectionStructureRules = {};
 
   for (const [sectionName, patterns] of Object.entries(config.sections)) {
-    const patternValues = Array.isArray(patterns) ? patterns : [patterns];
+    const patternValues = isSegmentList(patterns)
+      ? [patterns]
+      : Array.isArray(patterns)
+        ? patterns
+        : [patterns];
 
     if (patternValues.length === 0) {
       throw new Error(
@@ -87,18 +96,116 @@ function readSectionRules(config: unknown): SectionStructureRules {
       );
     }
 
-    sectionRules[sectionName] = patternValues.map((pattern) => {
-      if (typeof pattern !== "string") {
-        throw new Error(
-          `cadence-lint: config section '${sectionName}' patterns must be strings`,
-        );
-      }
-
-      return parseStructurePattern(pattern);
-    });
+    sectionRules[sectionName] = patternValues.map((pattern) =>
+      readSectionPattern(sectionName, pattern),
+    );
   }
 
   return sectionRules;
+}
+
+function readSectionPattern(
+  sectionName: string,
+  pattern: unknown,
+): readonly number[] | SectionStructure {
+  if (typeof pattern === "string") {
+    return parseStructurePattern(pattern);
+  }
+
+  if (isSegmentList(pattern)) {
+    return readDescribedPattern(sectionName, pattern);
+  }
+
+  if (!isRecord(pattern)) {
+    throw new Error(
+      `cadence-lint: config section '${sectionName}' patterns must be strings or objects`,
+    );
+  }
+
+  const description = readOptionalString(
+    pattern.description,
+    `cadence-lint: config section '${sectionName}' pattern description must be a string`,
+  );
+  const patternValue = pattern.pattern;
+
+  if (typeof patternValue === "string") {
+    return {
+      counts: parseStructurePattern(patternValue),
+      ...(description === undefined ? {} : { description }),
+    };
+  }
+
+  if (isSegmentList(patternValue)) {
+    return readDescribedPattern(sectionName, patternValue, description);
+  }
+
+  throw new Error(
+    `cadence-lint: config section '${sectionName}' pattern object must define a string pattern or described segment list`,
+  );
+}
+
+function readDescribedPattern(
+  sectionName: string,
+  segments: readonly unknown[],
+  description?: string,
+): SectionStructure {
+  if (segments.length === 0) {
+    throw new Error(
+      `cadence-lint: config section '${sectionName}' described pattern must define at least one segment`,
+    );
+  }
+
+  const parsedSegments = segments.map((segment, index) =>
+    readPatternSegment(sectionName, segment, index),
+  );
+
+  return {
+    counts: parsedSegments.map((segment) => segment.count),
+    ...(description === undefined ? {} : { description }),
+    segmentDescriptions: parsedSegments.map((segment) => segment.description ?? ""),
+  };
+}
+
+function readPatternSegment(
+  sectionName: string,
+  segment: unknown,
+  index: number,
+): SectionStructureSegment {
+  if (!isRecord(segment)) {
+    throw new Error(
+      `cadence-lint: config section '${sectionName}' pattern segment ${index + 1} must be an object`,
+    );
+  }
+
+  const count = segment.count;
+
+  if (typeof count !== "number" || !Number.isInteger(count) || count <= 0) {
+    throw new Error(
+      `cadence-lint: config section '${sectionName}' pattern segment ${index + 1} count must be a positive integer`,
+    );
+  }
+
+  const description = readOptionalString(
+    segment.description,
+    `cadence-lint: config section '${sectionName}' pattern segment ${index + 1} description must be a string`,
+  );
+
+  return {
+    count,
+    ...(description === undefined ? {} : { description }),
+  };
+}
+
+function readOptionalString(value: unknown, errorMessage: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw new Error(errorMessage);
+  }
+
+  return value;
 }
 
 function readProtectedPatterns(config: unknown): readonly RegExp[] {
@@ -241,6 +348,14 @@ function findNextSignificantIndex(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSegmentList(value: unknown): value is readonly unknown[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((item) => isRecord(item) && "count" in item)
+  );
 }
 
 function isMissingFileError(error: unknown): boolean {

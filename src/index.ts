@@ -3,6 +3,7 @@ export {
   formatDiagnostics,
   getDiagnosticExitCode,
   type DiagnosticExitCode,
+  type ExpectedStructureDetail,
   type DiagnosticLocation,
   type DiagnosticSection,
   type DiagnosticSeverity,
@@ -44,6 +45,7 @@ export {
 
 import type {
   DiagnosticStructureContext,
+  ExpectedStructureDetail,
   LintDiagnostic,
 } from "./diagnostics.js";
 import {
@@ -58,7 +60,19 @@ import {
 import { matchSequence } from "./sequence-matcher.js";
 import { splitSentences, validateSentenceLanguage } from "./sentences.js";
 
-export type SectionStructureRules = Record<string, readonly (readonly number[])[]>;
+export interface SectionStructureSegment {
+  count: number;
+  description?: string;
+}
+
+export interface SectionStructure {
+  counts: readonly number[];
+  description?: string;
+  segmentDescriptions?: readonly string[];
+}
+
+export type SectionStructureRule = readonly number[] | SectionStructure;
+export type SectionStructureRules = Record<string, readonly SectionStructureRule[]>;
 
 export interface LintMarkdownOptions {
   filePath?: string;
@@ -133,9 +147,10 @@ function lintMarkedSectionStructures(
     const observedStructure = paragraphAnalyses.map(
       (analysis) => analysis.sentenceCount,
     );
+    const normalizedStructures = allowedStructures.map(normalizeSectionStructure);
     const result = matchSequence(
       observedStructure,
-      allowedStructures.map((structure) => [...structure]),
+      normalizedStructures.map((structure) => [...structure.counts]),
     );
 
     if (result.passed) {
@@ -156,11 +171,17 @@ function lintMarkedSectionStructures(
         column: section.openingMarker.column,
       },
       observedStructure: formatStructure(observedStructure),
-      expectedStructures: allowedStructures.map(formatStructure),
+      expectedStructures: normalizedStructures.map((structure) =>
+        formatStructure(structure.counts),
+      ),
+      expectedStructureDetails: buildExpectedStructureDetails(normalizedStructures),
       structureContext: buildStructureContext(
         section.paragraphs,
         paragraphAnalyses,
-        findStructureContextStart(observedStructure, allowedStructures),
+        findStructureContextStart(
+          observedStructure,
+          normalizedStructures.map((structure) => structure.counts),
+        ),
       ),
       ...(result.unmatchedSuffixStart > 0
         ? { unmatchedSuffixStart: result.unmatchedSuffixStart + 1 }
@@ -169,6 +190,36 @@ function lintMarkedSectionStructures(
   }
 
   return diagnostics;
+}
+
+function normalizeSectionStructure(structure: SectionStructureRule): SectionStructure {
+  if ("counts" in structure) {
+    return structure;
+  }
+
+  return { counts: structure };
+}
+
+function buildExpectedStructureDetails(
+  structures: readonly SectionStructure[],
+): ExpectedStructureDetail[] | undefined {
+  const details = structures
+    .filter(
+      (structure) =>
+        structure.description !== undefined ||
+        (structure.segmentDescriptions?.length ?? 0) > 0,
+    )
+    .map((structure) => ({
+      pattern: formatStructure(structure.counts),
+      ...(structure.description === undefined
+        ? {}
+        : { description: structure.description }),
+      ...(structure.segmentDescriptions === undefined
+        ? {}
+        : { segmentDescriptions: structure.segmentDescriptions }),
+    }));
+
+  return details.length === 0 ? undefined : details;
 }
 
 interface ParagraphStructureAnalysis {
@@ -193,14 +244,14 @@ function analyzeParagraphStructure(
 
 function findStructureContextStart(
   observedStructure: readonly number[],
-  allowedStructures: SectionStructureRules[string],
+  allowedStructures: readonly (readonly number[])[],
 ): number {
   return findStructureContextStartFrom(observedStructure, allowedStructures, 0);
 }
 
 function findStructureContextStartFrom(
   observedStructure: readonly number[],
-  allowedStructures: SectionStructureRules[string],
+  allowedStructures: readonly (readonly number[])[],
   startIndex: number,
 ): number {
   if (startIndex >= observedStructure.length) {
