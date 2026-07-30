@@ -23,10 +23,15 @@ describe("diagnostics", () => {
       },
       observedStructure: "intro -> takeaway",
       expectedStructures: ["intro -> evidence -> takeaway"],
+      structureContext: {
+        previousSentences: ["Intro sentence.", "Evidence sentence."],
+        mismatchParagraph: 3,
+        mismatchText: "Takeaway sentence.",
+      },
     };
 
     expect(formatDiagnostic(diagnostic)).toBe(
-      "README.md:12:3 error Expected section order intro -> evidence -> takeaway. [section: Launch notes, heading line: 8, level: 2, observed: intro -> takeaway, expected: intro -> evidence -> takeaway]",
+      "README.md:12:3 error Expected section order intro -> evidence -> takeaway. [section: Launch notes, heading line: 8, level: 2, observed: intro -> takeaway, expected: intro -> evidence -> takeaway, context: previous \"Intro sentence.\" | \"Evidence sentence.\"; mismatch paragraph 3 \"Takeaway sentence.\"]",
     );
   });
 

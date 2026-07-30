@@ -12,6 +12,12 @@ export interface DiagnosticSection {
   level?: number;
 }
 
+export interface DiagnosticStructureContext {
+  previousSentences: readonly string[];
+  mismatchParagraph: number;
+  mismatchText: string;
+}
+
 export interface LintDiagnostic {
   severity: DiagnosticSeverity;
   message: string;
@@ -20,6 +26,7 @@ export interface LintDiagnostic {
   observedStructure?: string;
   expectedStructures?: readonly string[];
   unmatchedSuffixStart?: number;
+  structureContext?: DiagnosticStructureContext;
 }
 
 export type DiagnosticExitCode = 0 | 1;
@@ -71,5 +78,24 @@ function formatDiagnosticDetails(diagnostic: LintDiagnostic): string[] {
     details.push(`expected: ${diagnostic.expectedStructures.join(" | ")}`);
   }
 
+  if (diagnostic.structureContext) {
+    details.push(formatStructureContext(diagnostic.structureContext));
+  }
+
   return details;
+}
+
+function formatStructureContext(context: DiagnosticStructureContext): string {
+  const previous =
+    context.previousSentences.length === 0
+      ? "previous none"
+      : `previous ${context.previousSentences.map(quoteContextText).join(" | ")}`;
+
+  return `context: ${previous}; mismatch paragraph ${
+    context.mismatchParagraph
+  } ${quoteContextText(context.mismatchText)}`;
+}
+
+function quoteContextText(text: string): string {
+  return `"${text.replace(/\s+/g, " ").trim()}"`;
 }

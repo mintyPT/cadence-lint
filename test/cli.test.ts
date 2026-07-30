@@ -119,6 +119,11 @@ describe("cli", () => {
           },
           observedStructure: "1/2",
           expectedStructures: ["1/1"],
+          structureContext: {
+            previousSentences: ["One sentence."],
+            mismatchParagraph: 2,
+            mismatchText: "Second paragraph has two sentences.",
+          },
         },
       ],
     });
