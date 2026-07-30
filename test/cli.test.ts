@@ -14,6 +14,21 @@ describe("cli", () => {
     expect(result.stdout).toContain("Lint Markdown prose structure and cadence.");
   }, cliTestTimeout);
 
+  it("includes concise field notes in help output", async () => {
+    const result = await execa("tsx", ["src/cli/index.ts", "--help"]);
+
+    expect(result.stdout).toContain("Field notes:");
+    expect(result.stdout).toContain(
+      "Lint marked prose sections before publishing a README or guide.",
+    );
+    expect(result.stdout).toContain(
+      "Load configured section structures from cadence.config.jsonc.",
+    );
+    expect(result.stdout).toContain(
+      "Use --format json when CI or editor tooling needs diagnostics.",
+    );
+  }, cliTestTimeout);
+
   it("accepts Markdown files for linting", async () => {
     const result = await execa("tsx", ["src/cli/index.ts", "README.md"]);
 
@@ -104,6 +119,11 @@ describe("cli", () => {
           },
           observedStructure: "1/2",
           expectedStructures: ["1/1"],
+          structureContext: {
+            previousSentences: ["One sentence."],
+            mismatchParagraph: 2,
+            mismatchText: "Second paragraph has two sentences.",
+          },
         },
       ],
     });
@@ -414,6 +434,39 @@ describe("cli", () => {
         "Dr. Stone arrived.",
         "",
         "<!-- /cadence:intro -->",
+      ].join("\n"),
+    );
+
+    const result = await execa("tsx", [join(process.cwd(), "src/cli/index.ts"), filePath], {
+      cwd: directory,
+    });
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
+  it("loads arbitrary named section rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sections": {',
+        '    "overview": ["1/2"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:overview -->",
+        "",
+        "One sentence.",
+        "",
+        "First sentence. Second sentence.",
+        "",
+        "<!-- /cadence:overview -->",
       ].join("\n"),
     );
 

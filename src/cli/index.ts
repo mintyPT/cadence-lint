@@ -36,7 +36,17 @@ program
   .option("--language <language>", "Language code for prose rules.")
   .option("--config <path>", "Path to a cadence JSONC config file.")
   .option("--format <format>", "Output format: human or json.", "human")
-  .version("0.1.0");
+  .version("0.1.0")
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Field notes:",
+      "  Lint marked prose sections before publishing a README or guide.",
+      "  Load configured section structures from cadence.config.jsonc.",
+      "  Use --format json when CI or editor tooling needs diagnostics.",
+    ].join("\n"),
+  );
 
 interface CliOptions {
   section: string[];

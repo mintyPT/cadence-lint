@@ -103,6 +103,50 @@ describe("lintMarkdown", () => {
           observedStructure: "1/3/1/4",
           expectedStructures: ["1/3/1", "2"],
           unmatchedSuffixStart: 4,
+          structureContext: {
+            previousSentences: ["Third sentence.", "Last sentence."],
+            mismatchParagraph: 4,
+            mismatchText: "Unexpected sentence count.",
+          },
+        }),
+      ],
+    });
+  });
+
+  it("reports structure mismatch context at the start of a section", () => {
+    const markdown = [
+      "<!-- cadence:overview -->",
+      "",
+      "One sentence.",
+      "",
+      "<!-- /cadence:overview -->",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        filePath: "guide.md",
+        sectionRules: {
+          overview: [[2]],
+        },
+      }),
+    ).toEqual({
+      diagnostics: [
+        expect.objectContaining({
+          severity: "error",
+          message:
+            "Cadence section 'overview' structure does not match expected structures.",
+          location: {
+            filePath: "guide.md",
+            line: 1,
+            column: 1,
+          },
+          observedStructure: "1",
+          expectedStructures: ["2"],
+          structureContext: {
+            previousSentences: [],
+            mismatchParagraph: 1,
+            mismatchText: "One sentence.",
+          },
         }),
       ],
     });

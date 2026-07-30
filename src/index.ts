@@ -6,6 +6,7 @@ export {
   type DiagnosticLocation,
   type DiagnosticSection,
   type DiagnosticSeverity,
+  type DiagnosticStructureContext,
   type LintDiagnostic,
 } from "./diagnostics.js";
 export {
@@ -41,8 +42,14 @@ export {
   type SequenceMatchResult,
 } from "./sequence-matcher.js";
 
-import type { LintDiagnostic } from "./diagnostics.js";
-import { parseMarkdownDocument } from "./markdown-document.js";
+import type {
+  DiagnosticStructureContext,
+  LintDiagnostic,
+} from "./diagnostics.js";
+import {
+  parseMarkdownDocument,
+  type MarkdownParagraph,
+} from "./markdown-document.js";
 import {
   findParagraphsOutsideCadenceMarkers,
   parseCadenceMarkedSections,
@@ -120,12 +127,11 @@ function lintMarkedSectionStructures(
       continue;
     }
 
-    const observedStructure = section.paragraphs.map(
-      (paragraph) =>
-        splitSentences(paragraph.text, {
-          language: options.language,
-          protectedPatterns: options.protectedPatterns,
-        }).length,
+    const paragraphAnalyses = section.paragraphs.map((paragraph) =>
+      analyzeParagraphStructure(paragraph, options),
+    );
+    const observedStructure = paragraphAnalyses.map(
+      (analysis) => analysis.sentenceCount,
     );
     const result = matchSequence(
       observedStructure,
@@ -151,6 +157,11 @@ function lintMarkedSectionStructures(
       },
       observedStructure: formatStructure(observedStructure),
       expectedStructures: allowedStructures.map(formatStructure),
+      structureContext: buildStructureContext(
+        section.paragraphs,
+        paragraphAnalyses,
+        findStructureContextStart(observedStructure, allowedStructures),
+      ),
       ...(result.unmatchedSuffixStart > 0
         ? { unmatchedSuffixStart: result.unmatchedSuffixStart + 1 }
         : {}),
@@ -158,6 +169,110 @@ function lintMarkedSectionStructures(
   }
 
   return diagnostics;
+}
+
+interface ParagraphStructureAnalysis {
+  sentenceCount: number;
+  sentences: readonly string[];
+}
+
+function analyzeParagraphStructure(
+  paragraph: MarkdownParagraph,
+  options: { language: string; protectedPatterns: readonly RegExp[] },
+): ParagraphStructureAnalysis {
+  const sentences = splitSentences(paragraph.text, {
+    language: options.language,
+    protectedPatterns: options.protectedPatterns,
+  }).map((sentence) => sentence.text);
+
+  return {
+    sentenceCount: sentences.length,
+    sentences,
+  };
+}
+
+function findStructureContextStart(
+  observedStructure: readonly number[],
+  allowedStructures: SectionStructureRules[string],
+): number {
+  return findStructureContextStartFrom(observedStructure, allowedStructures, 0);
+}
+
+function findStructureContextStartFrom(
+  observedStructure: readonly number[],
+  allowedStructures: SectionStructureRules[string],
+  startIndex: number,
+): number {
+  if (startIndex >= observedStructure.length) {
+    return startIndex;
+  }
+
+  let contextStart = startIndex;
+
+  for (const allowedStructure of allowedStructures) {
+    const mismatchIndex = findPatternMismatchIndex(
+      observedStructure,
+      allowedStructure,
+      startIndex,
+    );
+
+    if (mismatchIndex !== undefined) {
+      contextStart = Math.max(contextStart, mismatchIndex);
+      continue;
+    }
+
+    contextStart = Math.max(
+      contextStart,
+      findStructureContextStartFrom(
+        observedStructure,
+        allowedStructures,
+        startIndex + allowedStructure.length,
+      ),
+    );
+  }
+
+  return contextStart;
+}
+
+function findPatternMismatchIndex(
+  observedStructure: readonly number[],
+  allowedStructure: readonly number[],
+  startIndex: number,
+): number | undefined {
+  for (let offset = 0; offset < allowedStructure.length; offset += 1) {
+    const observedCount = observedStructure[startIndex + offset];
+
+    if (observedCount === undefined) {
+      return startIndex + offset;
+    }
+
+    if (observedCount !== allowedStructure[offset]) {
+      return startIndex + offset;
+    }
+  }
+
+  return undefined;
+}
+
+function buildStructureContext(
+  paragraphs: readonly MarkdownParagraph[],
+  paragraphAnalyses: readonly ParagraphStructureAnalysis[],
+  contextStart: number,
+): DiagnosticStructureContext {
+  const mismatchIndex = Math.min(contextStart, paragraphs.length - 1);
+  const previousSentences = paragraphAnalyses
+    .slice(0, mismatchIndex)
+    .flatMap((analysis) => analysis.sentences)
+    .slice(-2);
+
+  return {
+    previousSentences,
+    mismatchParagraph: mismatchIndex + 1,
+    mismatchText:
+      paragraphAnalyses[mismatchIndex]?.sentences[0] ??
+      paragraphs[mismatchIndex]?.text.trim() ??
+      "",
+  };
 }
 
 function formatStructure(structure: readonly number[]): string {
