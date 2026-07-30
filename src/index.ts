@@ -190,6 +190,12 @@ function lintMarkedSectionStructures(
           observedStructure,
           (normalizedRule.any ?? []).map((structure) => structure.counts),
         );
+    const expectedSentenceCount = findExpectedSentenceCountAt(
+      normalizedRule,
+      observedStructure,
+      contextStart,
+      result.failurePlacement,
+    );
 
     diagnostics.push({
       severity: "error",
@@ -203,11 +209,12 @@ function lintMarkedSectionStructures(
       expectedStructures: expectedStructures.map(({ structure }) =>
         formatStructure(structure.counts),
       ),
-      expectedStructureDetails: buildExpectedStructureDetails(expectedStructures),
+      ...withExpectedStructureDetails(expectedStructures),
       structureContext: buildStructureContext(
         section.paragraphs,
         paragraphAnalyses,
         contextStart,
+        expectedSentenceCount,
       ),
       ...(result.unmatchedSuffixStart > 0
         ? { unmatchedSuffixStart: result.unmatchedSuffixStart + 1 }
@@ -327,6 +334,81 @@ function isAnchoredNormalizedRule(rule: NormalizedSectionRule): boolean {
   );
 }
 
+function findExpectedSentenceCountAt(
+  rule: NormalizedSectionRule,
+  observedStructure: readonly number[],
+  paragraphIndex: number,
+  placement: SequencePatternPlacement | undefined,
+): number | undefined {
+  if (placement === undefined) {
+    return findExpectedCountFromPatterns(
+      observedStructure,
+      (rule.any ?? []).map((structure) => structure.counts),
+      paragraphIndex,
+      0,
+    );
+  }
+
+  const placements =
+    placement === "middle" && rule.middle === undefined
+      ? (["middle", "any"] as const)
+      : ([placement] as const);
+
+  for (const currentPlacement of placements) {
+    for (const structure of rule[currentPlacement] ?? []) {
+      const expectedCount = structure.counts[paragraphIndex % structure.counts.length];
+
+      if (expectedCount !== undefined) {
+        return expectedCount;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function findExpectedCountFromPatterns(
+  observedStructure: readonly number[],
+  allowedStructures: readonly (readonly number[])[],
+  targetIndex: number,
+  startIndex: number,
+): number | undefined {
+  for (const allowedStructure of allowedStructures) {
+    const mismatchIndex = findPatternMismatchIndex(
+      observedStructure,
+      allowedStructure,
+      startIndex,
+    );
+
+    if (mismatchIndex === targetIndex) {
+      return allowedStructure[targetIndex - startIndex];
+    }
+
+    if (mismatchIndex !== undefined) {
+      continue;
+    }
+
+    const nextStartIndex = startIndex + allowedStructure.length;
+
+    if (targetIndex < nextStartIndex) {
+      return allowedStructure[targetIndex - startIndex];
+    }
+
+    const nestedExpected = findExpectedCountFromPatterns(
+      observedStructure,
+      allowedStructures,
+      targetIndex,
+      nextStartIndex,
+    );
+
+    if (nestedExpected !== undefined) {
+      return nestedExpected;
+    }
+  }
+
+  return undefined;
+}
+
 function buildExpectedStructureDetails(
   structures: readonly PlacedSectionStructure[],
 ): ExpectedStructureDetail[] | undefined {
@@ -349,6 +431,14 @@ function buildExpectedStructureDetails(
     }));
 
   return details.length === 0 ? undefined : details;
+}
+
+function withExpectedStructureDetails(
+  structures: readonly PlacedSectionStructure[],
+): { expectedStructureDetails?: ExpectedStructureDetail[] } {
+  const details = buildExpectedStructureDetails(structures);
+
+  return details === undefined ? {} : { expectedStructureDetails: details };
 }
 
 interface ParagraphStructureAnalysis {
@@ -438,6 +528,7 @@ function buildStructureContext(
   paragraphs: readonly MarkdownParagraph[],
   paragraphAnalyses: readonly ParagraphStructureAnalysis[],
   contextStart: number,
+  expectedSentenceCount: number | undefined,
 ): DiagnosticStructureContext {
   const mismatchIndex = Math.min(contextStart, paragraphs.length - 1);
   const previousSentences = paragraphAnalyses
@@ -448,6 +539,10 @@ function buildStructureContext(
   return {
     previousSentences,
     mismatchParagraph: mismatchIndex + 1,
+    ...(expectedSentenceCount === undefined
+      ? {}
+      : { expectedSentenceCount }),
+    observedSentenceCount: paragraphAnalyses[mismatchIndex]?.sentenceCount ?? 0,
     mismatchText:
       paragraphAnalyses[mismatchIndex]?.sentences[0] ??
       paragraphs[mismatchIndex]?.text.trim() ??

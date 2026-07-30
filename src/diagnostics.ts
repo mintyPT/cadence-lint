@@ -16,6 +16,8 @@ export interface DiagnosticStructureContext {
   previousSentences: readonly string[];
   mismatchParagraph: number;
   mismatchText: string;
+  expectedSentenceCount?: number;
+  observedSentenceCount?: number;
 }
 
 export interface ExpectedStructureDetail {
@@ -123,7 +125,26 @@ function formatStructureContext(context: DiagnosticStructureContext): string {
 
   return `context: ${previous}; mismatch paragraph ${
     context.mismatchParagraph
-  } ${quoteContextText(context.mismatchText)}`;
+  }${formatSentenceCountExpectation(context)} ${quoteContextText(context.mismatchText)}`;
+}
+
+function formatSentenceCountExpectation(
+  context: DiagnosticStructureContext,
+): string {
+  if (
+    context.expectedSentenceCount === undefined ||
+    context.observedSentenceCount === undefined
+  ) {
+    return "";
+  }
+
+  return ` expected ${formatSentenceCount(
+    context.expectedSentenceCount,
+  )} but observed ${formatSentenceCount(context.observedSentenceCount)}`;
+}
+
+function formatSentenceCount(count: number): string {
+  return `${count} ${count === 1 ? "sentence" : "sentences"}`;
 }
 
 function quoteContextText(text: string): string {

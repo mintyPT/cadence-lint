@@ -81,6 +81,45 @@ npx tsx src/cli/index.ts --section installation=1/3/1 .showboat-cadence/good.md
 cadence-lint: no issues found
 ```
 
+Multiple allowed structures can be passed in one `--section` flag. The example below accepts either `1/3/1` or `1/5/1` for the `installation` section.
+
+```bash
+npx tsx src/cli/index.ts --section installation=1/3/1,1/5/1 .showboat-cadence/good.md
+
+```
+
+```output
+cadence-lint: no issues found
+```
+
+Allowed structures can also repeat to consume a longer marked section. This file uses one `1/3/1` structure followed by one `1/5/1` structure.
+
+```bash
+cat > .showboat-cadence/repeated.md <<'MARKDOWN'
+<!-- cadence:installation -->
+
+One sentence.
+
+First sentence. Second sentence. Third sentence.
+
+Last sentence.
+
+Middle opens.
+
+One. Two. Three. Four. Five.
+
+Middle closes.
+
+<!-- /cadence:installation -->
+MARKDOWN
+npx tsx src/cli/index.ts --section installation=1/3/1,1/5/1 .showboat-cadence/repeated.md
+
+```
+
+```output
+cadence-lint: no issues found
+```
+
 When the observed paragraph sentence counts do not match the configured structure, Cadence reports an error and exits non-zero. This block captures both the diagnostic and the exit code.
 
 ```bash
@@ -92,7 +131,7 @@ echo "exit=$exit_code"
 ```
 
 ```output
-.showboat-cadence/bad.md:1:1 error Cadence section 'installation' structure does not match expected structures. [observed: 1/2, expected: 1/3/1, context: previous "One sentence."; mismatch paragraph 2 "This paragraph has two sentences."]
+.showboat-cadence/bad.md:1:1 error Cadence section 'installation' structure does not match expected structures. [observed: 1/2, expected: 1/3/1, context: previous "One sentence."; mismatch paragraph 2 expected 3 sentences but observed 2 sentences "This paragraph has two sentences."]
 exit=1
 ```
 
@@ -141,6 +180,8 @@ echo "exit=$exit_code"
           "One sentence."
         ],
         "mismatchParagraph": 2,
+        "expectedSentenceCount": 3,
+        "observedSentenceCount": 2,
         "mismatchText": "This paragraph has two sentences."
       }
     }
