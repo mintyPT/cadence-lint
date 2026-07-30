@@ -51,6 +51,19 @@ describe("matchAnchoredSequence", () => {
     });
   });
 
+  it("matches alternatives in anchored start and middle buckets", () => {
+    expect(
+      matchAnchoredSequence([3, 1, 1, 5, 1, 1, 4, 2, 1, 2, 1], {
+        start: [[1, 3, 1], [3, 1]],
+        middle: [[1, 5, 1], [1, 4, 2]],
+        end: [[1, 2, 1]],
+      }),
+    ).toEqual({
+      passed: true,
+      segmentation: [[3, 1], [1, 5, 1], [1, 4, 2], [1, 2, 1]],
+    });
+  });
+
   it("uses any patterns as middle alternatives when middle is omitted", () => {
     expect(
       matchAnchoredSequence([1, 3, 1, 1, 5, 1, 1, 2, 1], {
