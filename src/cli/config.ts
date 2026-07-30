@@ -3,8 +3,10 @@ import { join } from "node:path";
 import {
   parseStructurePattern,
   type SectionStructure,
+  type SectionRule,
   type SectionStructureRules,
   type SectionStructureSegment,
+  type SectionStructurePattern,
 } from "../index.js";
 
 export interface CadenceCliConfig {
@@ -84,6 +86,11 @@ function readSectionRules(config: unknown): SectionStructureRules {
   const sectionRules: SectionStructureRules = {};
 
   for (const [sectionName, patterns] of Object.entries(config.sections)) {
+    if (isAnchoredSectionRuleObject(patterns)) {
+      sectionRules[sectionName] = readAnchoredSectionRule(sectionName, patterns);
+      continue;
+    }
+
     const patternValues = isSegmentList(patterns)
       ? [patterns]
       : Array.isArray(patterns)
@@ -107,7 +114,7 @@ function readSectionRules(config: unknown): SectionStructureRules {
 function readSectionPattern(
   sectionName: string,
   pattern: unknown,
-): readonly number[] | SectionStructure {
+): SectionStructurePattern {
   if (typeof pattern === "string") {
     return parseStructurePattern(pattern);
   }
@@ -142,6 +149,59 @@ function readSectionPattern(
   throw new Error(
     `cadence-lint: config section '${sectionName}' pattern object must define a string pattern or described segment list`,
   );
+}
+
+function readAnchoredSectionRule(
+  sectionName: string,
+  rule: Record<string, unknown>,
+): SectionRule {
+  const normalizedRule: SectionRule = {};
+  let bucketCount = 0;
+
+  for (const placement of ["any", "start", "middle", "end"] as const) {
+    if (rule[placement] === undefined) {
+      continue;
+    }
+
+    const bucket = readPatternBucket(sectionName, placement, rule[placement]);
+    normalizedRule[placement] = bucket;
+    bucketCount += bucket.length;
+  }
+
+  if (bucketCount === 0) {
+    throw new Error(
+      `cadence-lint: config section '${sectionName}' must define at least one structure pattern`,
+    );
+  }
+
+  return normalizedRule;
+}
+
+function readPatternBucket(
+  sectionName: string,
+  placement: "any" | "start" | "middle" | "end",
+  value: unknown,
+): readonly SectionStructurePattern[] {
+  const values =
+    typeof value === "string" || isSegmentList(value) || isPatternObject(value)
+      ? [value]
+      : Array.isArray(value)
+        ? value
+        : undefined;
+
+  if (values === undefined) {
+    throw new Error(
+      `cadence-lint: config section '${sectionName}' ${placement} must be a pattern or array of patterns`,
+    );
+  }
+
+  if (values.length === 0) {
+    throw new Error(
+      `cadence-lint: config section '${sectionName}' ${placement} must define at least one structure pattern`,
+    );
+  }
+
+  return values.map((pattern) => readSectionPattern(sectionName, pattern));
 }
 
 function readDescribedPattern(
@@ -355,6 +415,19 @@ function isSegmentList(value: unknown): value is readonly unknown[] {
     Array.isArray(value) &&
     value.length > 0 &&
     value.every((item) => isRecord(item) && "count" in item)
+  );
+}
+
+function isPatternObject(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && "pattern" in value;
+}
+
+function isAnchoredSectionRuleObject(
+  value: unknown,
+): value is Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    ("any" in value || "start" in value || "middle" in value || "end" in value)
   );
 }
 

@@ -37,9 +37,12 @@ export {
   type CadenceMarkerType,
 } from "./cadence-markers.js";
 export {
+  matchAnchoredSequence,
   matchSequence,
+  type AnchoredSequencePatterns,
   type SequenceMatchFail,
   type SequenceMatchPass,
+  type SequencePatternPlacement,
   type SequenceMatchResult,
 } from "./sequence-matcher.js";
 
@@ -57,7 +60,10 @@ import {
   parseCadenceMarkedSections,
   validateCadenceMarkers,
 } from "./cadence-markers.js";
-import { matchSequence } from "./sequence-matcher.js";
+import {
+  matchAnchoredSequence,
+  type SequencePatternPlacement,
+} from "./sequence-matcher.js";
 import { splitSentences, validateSentenceLanguage } from "./sentences.js";
 
 export interface SectionStructureSegment {
@@ -71,8 +77,20 @@ export interface SectionStructure {
   segmentDescriptions?: readonly string[];
 }
 
-export type SectionStructureRule = readonly number[] | SectionStructure;
-export type SectionStructureRules = Record<string, readonly SectionStructureRule[]>;
+export type SectionStructurePattern = readonly number[] | SectionStructure;
+
+export interface SectionRule {
+  any?: readonly SectionStructurePattern[];
+  start?: readonly SectionStructurePattern[];
+  middle?: readonly SectionStructurePattern[];
+  end?: readonly SectionStructurePattern[];
+}
+
+export type SectionStructureRule =
+  | SectionStructurePattern
+  | readonly SectionStructurePattern[]
+  | SectionRule;
+export type SectionStructureRules = Record<string, SectionStructureRule>;
 
 export interface LintMarkdownOptions {
   filePath?: string;
@@ -147,10 +165,10 @@ function lintMarkedSectionStructures(
     const observedStructure = paragraphAnalyses.map(
       (analysis) => analysis.sentenceCount,
     );
-    const normalizedStructures = allowedStructures.map(normalizeSectionStructure);
-    const result = matchSequence(
+    const normalizedRule = normalizeSectionRule(allowedStructures);
+    const result = matchAnchoredSequence(
       observedStructure,
-      normalizedStructures.map((structure) => [...structure.counts]),
+      toMatcherPatterns(normalizedRule),
     );
 
     if (result.passed) {
@@ -161,27 +179,35 @@ function lintMarkedSectionStructures(
       result.unmatchedSuffixStart > 0
         ? ` Unmatched suffix starts at paragraph ${result.unmatchedSuffixStart + 1}.`
         : "";
+    const placementDetail =
+      result.failurePlacement === undefined
+        ? ""
+        : ` ${formatPlacement(result.failurePlacement)} anchor did not match.`;
+    const expectedStructures = flattenSectionRule(normalizedRule);
+    const contextStart = isAnchoredNormalizedRule(normalizedRule)
+      ? result.unmatchedSuffixStart
+      : findStructureContextStart(
+          observedStructure,
+          (normalizedRule.any ?? []).map((structure) => structure.counts),
+        );
 
     diagnostics.push({
       severity: "error",
-      message: `Cadence section '${section.name}' structure does not match expected structures.${suffixDetail}`,
+      message: `Cadence section '${section.name}' structure does not match expected structures.${placementDetail}${suffixDetail}`,
       location: {
         filePath,
         line: section.openingMarker.line,
         column: section.openingMarker.column,
       },
       observedStructure: formatStructure(observedStructure),
-      expectedStructures: normalizedStructures.map((structure) =>
+      expectedStructures: expectedStructures.map(({ structure }) =>
         formatStructure(structure.counts),
       ),
-      expectedStructureDetails: buildExpectedStructureDetails(normalizedStructures),
+      expectedStructureDetails: buildExpectedStructureDetails(expectedStructures),
       structureContext: buildStructureContext(
         section.paragraphs,
         paragraphAnalyses,
-        findStructureContextStart(
-          observedStructure,
-          normalizedStructures.map((structure) => structure.counts),
-        ),
+        contextStart,
       ),
       ...(result.unmatchedSuffixStart > 0
         ? { unmatchedSuffixStart: result.unmatchedSuffixStart + 1 }
@@ -192,25 +218,128 @@ function lintMarkedSectionStructures(
   return diagnostics;
 }
 
-function normalizeSectionStructure(structure: SectionStructureRule): SectionStructure {
-  if ("counts" in structure) {
+interface NormalizedSectionRule {
+  any?: readonly SectionStructure[];
+  start?: readonly SectionStructure[];
+  middle?: readonly SectionStructure[];
+  end?: readonly SectionStructure[];
+}
+
+interface PlacedSectionStructure {
+  structure: SectionStructure;
+  placement: SequencePatternPlacement;
+}
+
+function normalizeSectionRule(rule: SectionStructureRule): NormalizedSectionRule {
+  if (isSectionRuleObject(rule)) {
+    return {
+      ...(rule.any === undefined
+        ? {}
+        : { any: rule.any.map(normalizeSectionStructure) }),
+      ...(rule.start === undefined
+        ? {}
+        : { start: rule.start.map(normalizeSectionStructure) }),
+      ...(rule.middle === undefined
+        ? {}
+        : { middle: rule.middle.map(normalizeSectionStructure) }),
+      ...(rule.end === undefined
+        ? {}
+        : { end: rule.end.map(normalizeSectionStructure) }),
+    };
+  }
+
+  if (isSectionStructurePatternList(rule)) {
+    return { any: rule.map(normalizeSectionStructure) };
+  }
+
+  return { any: [normalizeSectionStructure(rule)] };
+}
+
+function isSectionRuleObject(rule: SectionStructureRule): rule is SectionRule {
+  return (
+    typeof rule === "object" &&
+    rule !== null &&
+    !Array.isArray(rule) &&
+    ("any" in rule || "start" in rule || "middle" in rule || "end" in rule)
+  );
+}
+
+function isSectionStructurePatternList(
+  rule: SectionStructureRule,
+): rule is readonly SectionStructurePattern[] {
+  return Array.isArray(rule) && (rule.length === 0 || isSectionStructurePattern(rule[0]));
+}
+
+function isSectionStructurePattern(rule: unknown): rule is SectionStructurePattern {
+  return (
+    Array.isArray(rule) ||
+    (typeof rule === "object" && rule !== null && "counts" in rule)
+  );
+}
+
+function normalizeSectionStructure(
+  structure: SectionStructurePattern,
+): SectionStructure {
+  if (!Array.isArray(structure) && "counts" in structure) {
     return structure;
   }
 
   return { counts: structure };
 }
 
+function toMatcherPatterns(rule: NormalizedSectionRule) {
+  return {
+    ...(rule.any === undefined
+      ? {}
+      : { any: rule.any.map((structure) => structure.counts) }),
+    ...(rule.start === undefined
+      ? {}
+      : { start: rule.start.map((structure) => structure.counts) }),
+    ...(rule.middle === undefined
+      ? {}
+      : { middle: rule.middle.map((structure) => structure.counts) }),
+    ...(rule.end === undefined
+      ? {}
+      : { end: rule.end.map((structure) => structure.counts) }),
+  };
+}
+
+function flattenSectionRule(rule: NormalizedSectionRule): PlacedSectionStructure[] {
+  return [
+    ...(rule.any ?? []).map((structure) => ({ structure, placement: "any" as const })),
+    ...(rule.start ?? []).map((structure) => ({
+      structure,
+      placement: "start" as const,
+    })),
+    ...(rule.middle ?? []).map((structure) => ({
+      structure,
+      placement: "middle" as const,
+    })),
+    ...(rule.end ?? []).map((structure) => ({ structure, placement: "end" as const })),
+  ];
+}
+
+function isAnchoredNormalizedRule(rule: NormalizedSectionRule): boolean {
+  return (
+    rule.start !== undefined ||
+    rule.middle !== undefined ||
+    rule.end !== undefined
+  );
+}
+
 function buildExpectedStructureDetails(
-  structures: readonly SectionStructure[],
+  structures: readonly PlacedSectionStructure[],
 ): ExpectedStructureDetail[] | undefined {
   const details = structures
     .filter(
-      (structure) =>
+      ({ structure, placement }) =>
+        placement !== "any" ||
         structure.description !== undefined ||
         (structure.segmentDescriptions?.length ?? 0) > 0,
     )
-    .map((structure) => ({
+    .map(({ structure, placement }) => ({
       pattern: formatStructure(structure.counts),
+      ...(placement === "any" ? {} : { placement }),
       ...(structure.description === undefined
         ? {}
         : { description: structure.description }),
@@ -328,4 +457,8 @@ function buildStructureContext(
 
 function formatStructure(structure: readonly number[]): string {
   return structure.join("/");
+}
+
+function formatPlacement(placement: SequencePatternPlacement): string {
+  return placement[0].toUpperCase() + placement.slice(1);
 }

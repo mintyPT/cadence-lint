@@ -67,6 +67,116 @@ describe("lintMarkdown", () => {
     });
   });
 
+  it("passes anchored start, middle, and end section structures", () => {
+    const markdown = [
+      "<!-- cadence:overview -->",
+      "",
+      "One sentence.",
+      "",
+      "First sentence. Second sentence. Third sentence.",
+      "",
+      "Last sentence.",
+      "",
+      "Middle opens.",
+      "",
+      "One. Two. Three. Four. Five.",
+      "",
+      "Middle closes.",
+      "",
+      "Final opens.",
+      "",
+      "One. Two.",
+      "",
+      "Final closes.",
+      "",
+      "<!-- /cadence:overview -->",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        sectionRules: {
+          overview: {
+            start: [[1, 3, 1]],
+            middle: [[1, 5, 1]],
+            end: [[1, 2, 1]],
+          },
+        },
+      }),
+    ).toEqual({
+      diagnostics: [],
+    });
+  });
+
+  it("uses any as an anchored middle alternative when middle is omitted", () => {
+    const markdown = [
+      "<!-- cadence:overview -->",
+      "",
+      "One sentence.",
+      "",
+      "First sentence. Second sentence. Third sentence.",
+      "",
+      "Last sentence.",
+      "",
+      "Middle opens.",
+      "",
+      "One. Two. Three. Four. Five.",
+      "",
+      "Middle closes.",
+      "",
+      "Final opens.",
+      "",
+      "One. Two.",
+      "",
+      "Final closes.",
+      "",
+      "<!-- /cadence:overview -->",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        sectionRules: {
+          overview: {
+            any: [[1, 5, 1]],
+            start: [[1, 3, 1]],
+            end: [[1, 2, 1]],
+          },
+        },
+      }),
+    ).toEqual({
+      diagnostics: [],
+    });
+  });
+
+  it("keeps legacy alternatives repeatable", () => {
+    const markdown = [
+      "<!-- cadence:overview -->",
+      "",
+      "One sentence.",
+      "",
+      "First sentence. Second sentence. Third sentence.",
+      "",
+      "Last sentence.",
+      "",
+      "Another sentence.",
+      "",
+      "First sentence. Second sentence. Third sentence.",
+      "",
+      "Last sentence.",
+      "",
+      "<!-- /cadence:overview -->",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        sectionRules: {
+          overview: [[1, 3, 1]],
+        },
+      }),
+    ).toEqual({
+      diagnostics: [],
+    });
+  });
+
   it("reports structure mismatches with observed and expected structures", () => {
     const markdown = [
       "<!-- cadence:intro -->",
@@ -161,6 +271,75 @@ describe("lintMarkdown", () => {
           structureContext: {
             previousSentences: ["One sentence."],
             mismatchParagraph: 2,
+            mismatchText: "Only two sentences here.",
+          },
+        }),
+      ],
+    });
+  });
+
+  it("reports anchored expected structure details with placement on mismatches", () => {
+    const markdown = [
+      "<!-- cadence:overview -->",
+      "",
+      "Only two sentences here. It mismatches.",
+      "",
+      "Final opens.",
+      "",
+      "One. Two.",
+      "",
+      "Final closes.",
+      "",
+      "<!-- /cadence:overview -->",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        filePath: "guide.md",
+        sectionRules: {
+          overview: {
+            start: [
+              {
+                counts: [1, 3, 1],
+                description: "Opening overview",
+                segmentDescriptions: [
+                  "Introduce the idea",
+                  "Develop the idea",
+                  "Conclude the idea",
+                ],
+              },
+            ],
+            end: [[1, 2, 1]],
+          },
+        },
+      }),
+    ).toEqual({
+      diagnostics: [
+        expect.objectContaining({
+          severity: "error",
+          message:
+            "Cadence section 'overview' structure does not match expected structures. Start anchor did not match.",
+          observedStructure: "2/1/2/1",
+          expectedStructures: ["1/3/1", "1/2/1"],
+          expectedStructureDetails: [
+            {
+              pattern: "1/3/1",
+              placement: "start",
+              description: "Opening overview",
+              segmentDescriptions: [
+                "Introduce the idea",
+                "Develop the idea",
+                "Conclude the idea",
+              ],
+            },
+            {
+              pattern: "1/2/1",
+              placement: "end",
+            },
+          ],
+          structureContext: {
+            previousSentences: [],
+            mismatchParagraph: 1,
             mismatchText: "Only two sentences here.",
           },
         }),
