@@ -477,6 +477,107 @@ describe("cli", () => {
     expect(result.stdout).toBe("cadence-lint: no issues found");
   }, cliTestTimeout);
 
+  it("loads described section structures from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sections": {',
+        '    "overview": {',
+        '      "pattern": [',
+        '        { "count": 1, "description": "Introduce the idea" },',
+        '        { "count": 3, "description": "Develop the idea" },',
+        '        { "count": 1, "description": "Conclude the idea" }',
+        "      ],",
+        '      "description": "Opening overview"',
+        "    }",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:overview -->",
+        "",
+        "One sentence.",
+        "",
+        "First sentence. Second sentence.",
+        "",
+        "<!-- /cadence:overview -->",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      {
+        cwd: directory,
+        reject: false,
+      },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({
+        observedStructure: "1/2",
+        expectedStructures: ["1/3/1"],
+        expectedStructureDetails: [
+          {
+            pattern: "1/3/1",
+            description: "Opening overview",
+            segmentDescriptions: [
+              "Introduce the idea",
+              "Develop the idea",
+              "Conclude the idea",
+            ],
+          },
+        ],
+      }),
+    );
+  }, cliTestTimeout);
+
+  it("loads issue-style described count arrays as one section structure", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sections": {',
+        '    "overview": [',
+        '      { "count": 1, "description": "Introduce the idea" },',
+        '      { "count": 3, "description": "Develop the idea" },',
+        '      { "count": 1, "description": "Conclude the idea" }',
+        "    ]",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:overview -->",
+        "",
+        "One sentence.",
+        "",
+        "First sentence. Second sentence. Third sentence.",
+        "",
+        "Last sentence.",
+        "",
+        "<!-- /cadence:overview -->",
+      ].join("\n"),
+    );
+
+    const result = await execa("tsx", [join(process.cwd(), "src/cli/index.ts"), filePath], {
+      cwd: directory,
+    });
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
   it("allows a missing auto-discovered config file", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");

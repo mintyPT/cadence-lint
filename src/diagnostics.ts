@@ -18,6 +18,12 @@ export interface DiagnosticStructureContext {
   mismatchText: string;
 }
 
+export interface ExpectedStructureDetail {
+  pattern: string;
+  description?: string;
+  segmentDescriptions?: readonly string[];
+}
+
 export interface LintDiagnostic {
   severity: DiagnosticSeverity;
   message: string;
@@ -25,6 +31,7 @@ export interface LintDiagnostic {
   section?: DiagnosticSection;
   observedStructure?: string;
   expectedStructures?: readonly string[];
+  expectedStructureDetails?: readonly ExpectedStructureDetail[];
   unmatchedSuffixStart?: number;
   structureContext?: DiagnosticStructureContext;
 }
@@ -75,7 +82,7 @@ function formatDiagnosticDetails(diagnostic: LintDiagnostic): string[] {
   }
 
   if (diagnostic.expectedStructures && diagnostic.expectedStructures.length > 0) {
-    details.push(`expected: ${diagnostic.expectedStructures.join(" | ")}`);
+    details.push(`expected: ${formatExpectedStructures(diagnostic)}`);
   }
 
   if (diagnostic.structureContext) {
@@ -83,6 +90,28 @@ function formatDiagnosticDetails(diagnostic: LintDiagnostic): string[] {
   }
 
   return details;
+}
+
+function formatExpectedStructures(diagnostic: LintDiagnostic): string {
+  if (
+    diagnostic.expectedStructureDetails === undefined ||
+    diagnostic.expectedStructureDetails.length === 0
+  ) {
+    return diagnostic.expectedStructures?.join(" | ") ?? "";
+  }
+
+  return diagnostic.expectedStructureDetails
+    .map((detail) => {
+      const descriptions = [
+        detail.description,
+        ...(detail.segmentDescriptions ?? []),
+      ].filter((description) => description !== undefined && description.length > 0);
+      const suffix =
+        descriptions.length > 0 ? ` (${descriptions.join("; ")})` : "";
+
+      return `${detail.pattern}${suffix}`;
+    })
+    .join(" | ");
 }
 
 function formatStructureContext(context: DiagnosticStructureContext): string {

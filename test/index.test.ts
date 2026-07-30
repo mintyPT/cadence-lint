@@ -113,6 +113,61 @@ describe("lintMarkdown", () => {
     });
   });
 
+  it("reports described expected structure details on mismatches", () => {
+    const markdown = [
+      "<!-- cadence:overview -->",
+      "",
+      "One sentence.",
+      "",
+      "Only two sentences here. It mismatches.",
+      "",
+      "<!-- /cadence:overview -->",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        filePath: "guide.md",
+        sectionRules: {
+          overview: [
+            {
+              counts: [1, 3, 1],
+              description: "Opening overview",
+              segmentDescriptions: [
+                "Introduce the idea",
+                "Develop the idea",
+                "Conclude the idea",
+              ],
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      diagnostics: [
+        expect.objectContaining({
+          severity: "error",
+          observedStructure: "1/2",
+          expectedStructures: ["1/3/1"],
+          expectedStructureDetails: [
+            {
+              pattern: "1/3/1",
+              description: "Opening overview",
+              segmentDescriptions: [
+                "Introduce the idea",
+                "Develop the idea",
+                "Conclude the idea",
+              ],
+            },
+          ],
+          structureContext: {
+            previousSentences: ["One sentence."],
+            mismatchParagraph: 2,
+            mismatchText: "Only two sentences here.",
+          },
+        }),
+      ],
+    });
+  });
+
   it("reports structure mismatch context at the start of a section", () => {
     const markdown = [
       "<!-- cadence:overview -->",
