@@ -214,7 +214,14 @@ describe("lintMarkdown", () => {
           expectedStructures: ["1/3/1", "2"],
           unmatchedSuffixStart: 4,
           structureContext: {
-            previousSentences: ["Third sentence.", "Last sentence."],
+            previousSentences: [
+              "Third sentence.",
+              "Last sentence.",
+              "Unexpected sentence count.",
+              "This paragraph does not match.",
+              "The suffix starts here.",
+              "Still wrong.",
+            ],
             mismatchParagraph: 4,
             expectedSentenceCount: 1,
             observedSentenceCount: 4,
@@ -271,7 +278,11 @@ describe("lintMarkdown", () => {
             },
           ],
           structureContext: {
-            previousSentences: ["One sentence."],
+            previousSentences: [
+              "One sentence.",
+              "Only two sentences here.",
+              "It mismatches.",
+            ],
             mismatchParagraph: 2,
             expectedSentenceCount: 3,
             observedSentenceCount: 2,
@@ -342,7 +353,7 @@ describe("lintMarkdown", () => {
             },
           ],
           structureContext: {
-            previousSentences: [],
+            previousSentences: ["Only two sentences here.", "It mismatches."],
             mismatchParagraph: 1,
             expectedSentenceCount: 1,
             observedSentenceCount: 2,
@@ -383,7 +394,7 @@ describe("lintMarkdown", () => {
           observedStructure: "1",
           expectedStructures: ["2"],
           structureContext: {
-            previousSentences: [],
+            previousSentences: ["One sentence."],
             mismatchParagraph: 1,
             expectedSentenceCount: 2,
             observedSentenceCount: 1,

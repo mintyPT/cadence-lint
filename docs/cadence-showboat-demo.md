@@ -136,7 +136,7 @@ echo "exit=$exit_code"
 ```
 
 ```output
-.showboat-cadence/bad.md:1:1 error Cadence section 'installation' structure does not match expected structures. [observed: 1/2, expected: 1/3/1, context: previous "One sentence."; mismatch paragraph 2 expected 3 sentences but observed 2 sentences "This paragraph has two sentences."]
+.showboat-cadence/bad.md:1:1 error Cadence section 'installation' structure does not match expected structures. [observed: 1/2, expected: 1/3/1, context: previous "One sentence." | "This paragraph has two sentences." | "It does not match."; mismatch paragraph 2 expected 3 sentences but observed 2 sentences "This paragraph has two sentences."]
 exit=1
 ```
 
@@ -182,7 +182,9 @@ echo "exit=$exit_code"
       ],
       "structureContext": {
         "previousSentences": [
-          "One sentence."
+          "One sentence.",
+          "This paragraph has two sentences.",
+          "It does not match."
         ],
         "mismatchParagraph": 2,
         "expectedSentenceCount": 3,
@@ -263,7 +265,9 @@ echo "exit=$exit_code"
       ],
       "structureContext": {
         "previousSentences": [
-          "One sentence."
+          "One sentence.",
+          "This paragraph has two sentences.",
+          "It does not match."
         ],
         "mismatchParagraph": 2,
         "expectedSentenceCount": 3,
