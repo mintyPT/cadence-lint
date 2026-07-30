@@ -36,6 +36,11 @@ Field notes:
 Create three tiny Markdown files: one section that matches a `1/3/1` cadence, one section that does not match, and one unmarked paragraph to show marker-coverage warnings.
 
 ```bash
+node - <<'NODE'
+import { rmSync } from "node:fs";
+
+rmSync(".showboat-cadence", { recursive: true, force: true });
+NODE
 mkdir -p .showboat-cadence
 cat > .showboat-cadence/good.md <<'MARKDOWN'
 <!-- cadence:installation -->
@@ -202,6 +207,113 @@ cat > .showboat-cadence/cadence.config.jsonc <<'JSONC'
 }
 JSONC
 npx tsx src/cli/index.ts --config .showboat-cadence/cadence.config.jsonc .showboat-cadence/good.md
+
+```
+
+```output
+cadence-lint: no issues found
+```
+
+Config entries can also describe the expected structure. Descriptions are included in JSON diagnostics so editor integrations and review tools can explain the intent behind a failing paragraph.
+
+```bash
+cat > .showboat-cadence/described.config.jsonc <<'JSONC'
+{
+  "language": "en",
+  "sections": {
+    "installation": [
+      { "count": 1, "description": "Introduce the installation path" },
+      { "count": 3, "description": "Explain the installation details" },
+      { "count": 1, "description": "Close with the result" }
+    ]
+  }
+}
+JSONC
+set +e
+npx tsx src/cli/index.ts --format json --config .showboat-cadence/described.config.jsonc .showboat-cadence/bad.md
+exit_code=$?
+echo "exit=$exit_code"
+
+```
+
+```output
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "message": "Cadence section 'installation' structure does not match expected structures.",
+      "location": {
+        "filePath": ".showboat-cadence/bad.md",
+        "line": 1,
+        "column": 1
+      },
+      "observedStructure": "1/2",
+      "expectedStructures": [
+        "1/3/1"
+      ],
+      "expectedStructureDetails": [
+        {
+          "pattern": "1/3/1",
+          "segmentDescriptions": [
+            "Introduce the installation path",
+            "Explain the installation details",
+            "Close with the result"
+          ]
+        }
+      ],
+      "structureContext": {
+        "previousSentences": [
+          "One sentence."
+        ],
+        "mismatchParagraph": 2,
+        "expectedSentenceCount": 3,
+        "observedSentenceCount": 2,
+        "mismatchText": "This paragraph has two sentences."
+      }
+    }
+  ]
+}
+exit=1
+```
+
+Use anchored structures when a section needs a specific opening shape, a repeatable middle shape, and a specific closing shape.
+
+```bash
+cat > .showboat-cadence/anchored.md <<'MARKDOWN'
+<!-- cadence:installation -->
+
+One sentence.
+
+First sentence. Second sentence. Third sentence.
+
+Last sentence.
+
+Middle opens.
+
+One. Two. Three. Four. Five.
+
+Middle closes.
+
+Final opens.
+
+One. Two.
+
+Final closes.
+
+<!-- /cadence:installation -->
+MARKDOWN
+cat > .showboat-cadence/anchored.config.jsonc <<'JSONC'
+{
+  "sections": {
+    "installation": {
+      "start": ["1/3/1"],
+      "middle": ["1/5/1"],
+      "end": ["1/2/1"]
+    }
+  }
+}
+JSONC
+npx tsx src/cli/index.ts --config .showboat-cadence/anchored.config.jsonc .showboat-cadence/anchored.md
 
 ```
 
