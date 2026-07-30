@@ -14,6 +14,21 @@ describe("cli", () => {
     expect(result.stdout).toContain("Lint Markdown prose structure and cadence.");
   }, cliTestTimeout);
 
+  it("includes concise field notes in help output", async () => {
+    const result = await execa("tsx", ["src/cli/index.ts", "--help"]);
+
+    expect(result.stdout).toContain("Field notes:");
+    expect(result.stdout).toContain(
+      "Lint marked prose sections before publishing a README or guide.",
+    );
+    expect(result.stdout).toContain(
+      "Load configured section structures from cadence.config.jsonc.",
+    );
+    expect(result.stdout).toContain(
+      "Use --format json when CI or editor tooling needs diagnostics.",
+    );
+  }, cliTestTimeout);
+
   it("accepts Markdown files for linting", async () => {
     const result = await execa("tsx", ["src/cli/index.ts", "README.md"]);
 
