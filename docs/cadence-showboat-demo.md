@@ -1,6 +1,6 @@
 # Using Cadence Lint
 
-*2026-07-30T12:37:39Z by Showboat 0.6.1*
+*2026-07-30T14:25:00Z by Showboat 0.6.1*
 <!-- showboat-id: ff8447b9-1749-4036-ae48-b89f5fe130cf -->
 
 Start by asking the CLI what it accepts. In a source checkout, use `npx tsx src/cli/index.ts`; after installation, the equivalent command is `cadence-lint`.
@@ -38,7 +38,7 @@ Create three tiny Markdown files: one section that matches a `1/3/1` cadence, on
 ```bash
 mkdir -p .showboat-cadence
 cat > .showboat-cadence/good.md <<'MARKDOWN'
-<!-- cadence:overview -->
+<!-- cadence:installation -->
 
 One sentence.
 
@@ -46,16 +46,16 @@ First sentence. Second sentence. Third sentence.
 
 Last sentence.
 
-<!-- /cadence:overview -->
+<!-- /cadence:installation -->
 MARKDOWN
 cat > .showboat-cadence/bad.md <<'MARKDOWN'
-<!-- cadence:overview -->
+<!-- cadence:installation -->
 
 One sentence.
 
 This paragraph has two sentences. It does not match.
 
-<!-- /cadence:overview -->
+<!-- /cadence:installation -->
 MARKDOWN
 cat > .showboat-cadence/unmarked.md <<'MARKDOWN'
 This paragraph is outside cadence markers.
@@ -70,10 +70,10 @@ find .showboat-cadence -maxdepth 1 -type f -name '*.md' | sort
 .showboat-cadence/unmarked.md
 ```
 
-Run Cadence with a section rule. The rule `overview=1/3/1` means the `overview` section must contain three counted paragraphs with one sentence, then three sentences, then one sentence.
+Run Cadence with a section rule. The rule `installation=1/3/1` means the non-intro `installation` section must contain three counted paragraphs with one sentence, then three sentences, then one sentence.
 
 ```bash
-npx tsx src/cli/index.ts --section overview=1/3/1 .showboat-cadence/good.md
+npx tsx src/cli/index.ts --section installation=1/3/1 .showboat-cadence/good.md
 
 ```
 
@@ -85,14 +85,14 @@ When the observed paragraph sentence counts do not match the configured structur
 
 ```bash
 set +e
-npx tsx src/cli/index.ts --section overview=1/3/1 .showboat-cadence/bad.md
-status=$?
-echo "exit=$status"
+npx tsx src/cli/index.ts --section installation=1/3/1 .showboat-cadence/bad.md
+exit_code=$?
+echo "exit=$exit_code"
 
 ```
 
 ```output
-.showboat-cadence/bad.md:1:1 error Cadence section 'overview' structure does not match expected structures. [observed: 1/2, expected: 1/3/1]
+.showboat-cadence/bad.md:1:1 error Cadence section 'installation' structure does not match expected structures. [observed: 1/2, expected: 1/3/1, context: previous "One sentence."; mismatch paragraph 2 "This paragraph has two sentences."]
 exit=1
 ```
 
@@ -101,8 +101,8 @@ Cadence also warns when normal paragraphs are not wrapped in cadence markers. Wa
 ```bash
 set +e
 npx tsx src/cli/index.ts .showboat-cadence/unmarked.md
-status=$?
-echo "exit=$status"
+exit_code=$?
+echo "exit=$exit_code"
 
 ```
 
@@ -115,9 +115,9 @@ Use `--format json` when another tool needs stable diagnostic fields instead of 
 
 ```bash
 set +e
-npx tsx src/cli/index.ts --format json --section overview=1/3/1 .showboat-cadence/bad.md
-status=$?
-echo "exit=$status"
+npx tsx src/cli/index.ts --format json --section installation=1/3/1 .showboat-cadence/bad.md
+exit_code=$?
+echo "exit=$exit_code"
 
 ```
 
@@ -126,7 +126,7 @@ echo "exit=$status"
   "diagnostics": [
     {
       "severity": "error",
-      "message": "Cadence section 'overview' structure does not match expected structures.",
+      "message": "Cadence section 'installation' structure does not match expected structures.",
       "location": {
         "filePath": ".showboat-cadence/bad.md",
         "line": 1,
@@ -135,7 +135,14 @@ echo "exit=$status"
       "observedStructure": "1/2",
       "expectedStructures": [
         "1/3/1"
-      ]
+      ],
+      "structureContext": {
+        "previousSentences": [
+          "One sentence."
+        ],
+        "mismatchParagraph": 2,
+        "mismatchText": "This paragraph has two sentences."
+      }
     }
   ]
 }
@@ -149,7 +156,7 @@ cat > .showboat-cadence/cadence.config.jsonc <<'JSONC'
 {
   "language": "en",
   "sections": {
-    "overview": ["1/3/1"]
+    "installation": ["1/3/1"]
   }
 }
 JSONC
