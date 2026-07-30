@@ -439,6 +439,39 @@ describe("cli", () => {
     expect(result.stdout).toBe("cadence-lint: no issues found");
   }, cliTestTimeout);
 
+  it("loads arbitrary named section rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sections": {',
+        '    "overview": ["1/2"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:overview -->",
+        "",
+        "One sentence.",
+        "",
+        "First sentence. Second sentence.",
+        "",
+        "<!-- /cadence:overview -->",
+      ].join("\n"),
+    );
+
+    const result = await execa("tsx", [join(process.cwd(), "src/cli/index.ts"), filePath], {
+      cwd: directory,
+    });
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
   it("allows a missing auto-discovered config file", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");

@@ -52,7 +52,7 @@ Configure section structures on the CLI with `--section`:
 ```bash
 cadence-lint --section intro=1/3/1 docs/intro.md
 cadence-lint --section intro=1/3/1,1/5/1 docs/intro.md
-cadence-lint --section intro=1 --section body=2/1 docs/intro.md
+cadence-lint --section overview=1 --section details=2/1 docs/guide.md
 ```
 
 `--section-rule <section=pattern>` is still accepted as a compatibility alias
@@ -66,7 +66,7 @@ languages are `en`, `fr`, and `pt`.
 Cadence sections are standalone HTML comments:
 
 ```markdown
-<!-- cadence:intro -->
+<!-- cadence:overview -->
 
 One sentence.
 
@@ -74,12 +74,13 @@ First sentence. Second sentence. Third sentence.
 
 Last sentence.
 
-<!-- /cadence:intro -->
+<!-- /cadence:overview -->
 ```
 
 The opening marker is `<!-- cadence:name -->`. The matching closing marker is
 `<!-- /cadence:name -->`. Marker names may contain letters, numbers,
-underscores, and hyphens.
+underscores, and hyphens. Use any section name that matches a configured
+section rule, such as `overview`, `details`, or `takeaway`.
 
 Markers must be standalone Markdown blocks. Inline comments are treated as
 normal paragraph text:
@@ -148,7 +149,8 @@ an error.
 {
   "language": "en",
   "sections": {
-    "intro": ["1/3/1", "1/5/1"]
+    "overview": ["1/3/1", "1/5/1"],
+    "details": ["2/1"]
   },
   "exceptions": ["Dr\\."]
 }

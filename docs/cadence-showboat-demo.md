@@ -6,7 +6,7 @@
 Start by asking the CLI what it accepts. In a source checkout, use `npx tsx src/cli/index.ts`; after installation, the equivalent command is `cadence-lint`.
 
 ```bash
-npx tsx src/cli/index.ts --help | sed -n '1,24p'
+npx tsx src/cli/index.ts --help | sed -n '1,30p'
 
 ```
 
@@ -26,6 +26,11 @@ Options:
   --format <format>                         Output format: human or json. (default: "human")
   -V, --version                             output the version number
   -h, --help                                display help for command
+
+Field notes:
+  Lint marked prose sections before publishing a README or guide.
+  Load configured section structures from cadence.config.jsonc.
+  Use --format json when CI or editor tooling needs diagnostics.
 ```
 
 Create three tiny Markdown files: one section that matches a `1/3/1` cadence, one section that does not match, and one unmarked paragraph to show marker-coverage warnings.
@@ -33,7 +38,7 @@ Create three tiny Markdown files: one section that matches a `1/3/1` cadence, on
 ```bash
 mkdir -p .showboat-cadence
 cat > .showboat-cadence/good.md <<'MARKDOWN'
-<!-- cadence:intro -->
+<!-- cadence:overview -->
 
 One sentence.
 
@@ -41,16 +46,16 @@ First sentence. Second sentence. Third sentence.
 
 Last sentence.
 
-<!-- /cadence:intro -->
+<!-- /cadence:overview -->
 MARKDOWN
 cat > .showboat-cadence/bad.md <<'MARKDOWN'
-<!-- cadence:intro -->
+<!-- cadence:overview -->
 
 One sentence.
 
 This paragraph has two sentences. It does not match.
 
-<!-- /cadence:intro -->
+<!-- /cadence:overview -->
 MARKDOWN
 cat > .showboat-cadence/unmarked.md <<'MARKDOWN'
 This paragraph is outside cadence markers.
@@ -65,10 +70,10 @@ find .showboat-cadence -maxdepth 1 -type f -name '*.md' | sort
 .showboat-cadence/unmarked.md
 ```
 
-Run Cadence with a section rule. The rule `intro=1/3/1` means the `intro` section must contain three counted paragraphs with one sentence, then three sentences, then one sentence.
+Run Cadence with a section rule. The rule `overview=1/3/1` means the `overview` section must contain three counted paragraphs with one sentence, then three sentences, then one sentence.
 
 ```bash
-npx tsx src/cli/index.ts --section intro=1/3/1 .showboat-cadence/good.md
+npx tsx src/cli/index.ts --section overview=1/3/1 .showboat-cadence/good.md
 
 ```
 
@@ -80,14 +85,14 @@ When the observed paragraph sentence counts do not match the configured structur
 
 ```bash
 set +e
-npx tsx src/cli/index.ts --section intro=1/3/1 .showboat-cadence/bad.md
+npx tsx src/cli/index.ts --section overview=1/3/1 .showboat-cadence/bad.md
 status=$?
 echo "exit=$status"
 
 ```
 
 ```output
-.showboat-cadence/bad.md:1:1 error Cadence section 'intro' structure does not match expected structures. [observed: 1/2, expected: 1/3/1]
+.showboat-cadence/bad.md:1:1 error Cadence section 'overview' structure does not match expected structures. [observed: 1/2, expected: 1/3/1]
 exit=1
 ```
 
@@ -110,7 +115,7 @@ Use `--format json` when another tool needs stable diagnostic fields instead of 
 
 ```bash
 set +e
-npx tsx src/cli/index.ts --format json --section intro=1/3/1 .showboat-cadence/bad.md
+npx tsx src/cli/index.ts --format json --section overview=1/3/1 .showboat-cadence/bad.md
 status=$?
 echo "exit=$status"
 
@@ -121,7 +126,7 @@ echo "exit=$status"
   "diagnostics": [
     {
       "severity": "error",
-      "message": "Cadence section 'intro' structure does not match expected structures.",
+      "message": "Cadence section 'overview' structure does not match expected structures.",
       "location": {
         "filePath": ".showboat-cadence/bad.md",
         "line": 1,
@@ -144,7 +149,7 @@ cat > .showboat-cadence/cadence.config.jsonc <<'JSONC'
 {
   "language": "en",
   "sections": {
-    "intro": ["1/3/1"]
+    "overview": ["1/3/1"]
   }
 }
 JSONC
@@ -157,4 +162,3 @@ cadence-lint: no issues found
 ```
 
 That is the everyday workflow: mark prose sections, configure the expected sentence-count pattern for each section name, run the CLI over Markdown files or globs, and use JSON output when automation needs to consume diagnostics.
-
