@@ -22,6 +22,7 @@ export interface ExpectedStructureDetail {
   pattern: string;
   description?: string;
   segmentDescriptions?: readonly string[];
+  placement?: "any" | "start" | "middle" | "end";
 }
 
 export interface LintDiagnostic {

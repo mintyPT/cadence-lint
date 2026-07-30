@@ -539,6 +539,66 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("loads anchored section structures from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sections": {',
+        '    "overview": {',
+        '      "start": ["1/3/1"],',
+        '      "middle": [',
+        '        {',
+        '          "pattern": [',
+        '            { "count": 1, "description": "Open middle" },',
+        '            { "count": 5, "description": "Develop middle" },',
+        '            { "count": 1, "description": "Close middle" }',
+        "          ],",
+        '          "description": "Middle body"',
+        "        }",
+        "      ],",
+        '      "end": ["1/2/1"]',
+        "    }",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:overview -->",
+        "",
+        "One sentence.",
+        "",
+        "First sentence. Second sentence. Third sentence.",
+        "",
+        "Last sentence.",
+        "",
+        "Middle opens.",
+        "",
+        "One. Two. Three. Four. Five.",
+        "",
+        "Middle closes.",
+        "",
+        "Final opens.",
+        "",
+        "One. Two.",
+        "",
+        "Final closes.",
+        "",
+        "<!-- /cadence:overview -->",
+      ].join("\n"),
+    );
+
+    const result = await execa("tsx", [join(process.cwd(), "src/cli/index.ts"), filePath], {
+      cwd: directory,
+    });
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
   it("loads issue-style described count arrays as one section structure", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");
