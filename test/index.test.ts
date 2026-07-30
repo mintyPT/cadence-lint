@@ -216,6 +216,8 @@ describe("lintMarkdown", () => {
           structureContext: {
             previousSentences: ["Third sentence.", "Last sentence."],
             mismatchParagraph: 4,
+            expectedSentenceCount: 1,
+            observedSentenceCount: 4,
             mismatchText: "Unexpected sentence count.",
           },
         }),
@@ -271,6 +273,8 @@ describe("lintMarkdown", () => {
           structureContext: {
             previousSentences: ["One sentence."],
             mismatchParagraph: 2,
+            expectedSentenceCount: 3,
+            observedSentenceCount: 2,
             mismatchText: "Only two sentences here.",
           },
         }),
@@ -340,6 +344,8 @@ describe("lintMarkdown", () => {
           structureContext: {
             previousSentences: [],
             mismatchParagraph: 1,
+            expectedSentenceCount: 1,
+            observedSentenceCount: 2,
             mismatchText: "Only two sentences here.",
           },
         }),
@@ -379,6 +385,8 @@ describe("lintMarkdown", () => {
           structureContext: {
             previousSentences: [],
             mismatchParagraph: 1,
+            expectedSentenceCount: 2,
+            observedSentenceCount: 1,
             mismatchText: "One sentence.",
           },
         }),

@@ -122,6 +122,8 @@ describe("cli", () => {
           structureContext: {
             previousSentences: ["One sentence."],
             mismatchParagraph: 2,
+            expectedSentenceCount: 1,
+            observedSentenceCount: 2,
             mismatchText: "Second paragraph has two sentences.",
           },
         },

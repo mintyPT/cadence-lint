@@ -135,6 +135,9 @@ Allowed structures can repeat to cover longer marked sections. For example,
 `intro=1/3/1` also accepts a six-paragraph section with observed structure
 `1/3/1/1/3/1`.
 
+Different allowed structures can repeat in the same marked section. For example,
+`intro=1/3/1,1/5/1` accepts an observed structure of `1/3/1/1/5/1`.
+
 Only normal Markdown paragraphs are counted. Headings, lists, code blocks, and
 HTML comments are not paragraph structure segments.
 
@@ -158,6 +161,39 @@ an error.
 
 `sections` maps cadence section names to allowed sentence-count structures. A
 section value may be a single string or an array of strings.
+
+For richer diagnostics, a pattern may describe the whole structure and each
+paragraph-count segment:
+
+```jsonc
+{
+  "sections": {
+    "overview": {
+      "pattern": [
+        { "count": 1, "description": "Introduce the idea" },
+        { "count": 3, "description": "Develop the idea" },
+        { "count": 1, "description": "Conclude the idea" }
+      ],
+      "description": "Opening overview"
+    }
+  }
+}
+```
+
+For anchored sections, use `start`, `middle`, and `end` buckets. `middle`
+patterns repeat to consume the body:
+
+```jsonc
+{
+  "sections": {
+    "overview": {
+      "start": ["1/3/1"],
+      "middle": ["1/5/1"],
+      "end": ["1/2/1"]
+    }
+  }
+}
+```
 
 `exceptions` is an array of regex strings protected during sentence splitting.
 Use it for abbreviations or other punctuation that should not end a sentence.
@@ -184,7 +220,7 @@ Human output is one diagnostic per line:
 
 ```text
 docs/intro.md:1:1 warning Normal paragraph is not covered by cadence markers.
-docs/intro.md:3:1 error Cadence section 'intro' structure does not match expected structures. [observed: 1/2, expected: 1/3/1]
+docs/intro.md:3:1 error Cadence section 'intro' structure does not match expected structures. [observed: 1/2, expected: 1/3/1, context: previous "One sentence."; mismatch paragraph 2 expected 3 sentences but observed 2 sentences "This paragraph has two sentences."]
 ```
 
 JSON output wraps diagnostics in a `diagnostics` array:
