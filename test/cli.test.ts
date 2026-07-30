@@ -120,7 +120,11 @@ describe("cli", () => {
           observedStructure: "1/2",
           expectedStructures: ["1/1"],
           structureContext: {
-            previousSentences: ["One sentence."],
+            previousSentences: [
+              "One sentence.",
+              "Second paragraph has two sentences.",
+              "It mismatches.",
+            ],
             mismatchParagraph: 2,
             expectedSentenceCount: 1,
             observedSentenceCount: 2,

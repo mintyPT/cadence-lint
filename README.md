@@ -220,7 +220,7 @@ Human output is one diagnostic per line:
 
 ```text
 docs/intro.md:1:1 warning Normal paragraph is not covered by cadence markers.
-docs/intro.md:3:1 error Cadence section 'intro' structure does not match expected structures. [observed: 1/2, expected: 1/3/1, context: previous "One sentence."; mismatch paragraph 2 expected 3 sentences but observed 2 sentences "This paragraph has two sentences."]
+docs/intro.md:3:1 error Cadence section 'intro' structure does not match expected structures. [observed: 1/2, expected: 1/3/1, context: previous "One sentence." | "This paragraph has two sentences." | "It does not match."; mismatch paragraph 2 expected 3 sentences but observed 2 sentences "This paragraph has two sentences."]
 ```
 
 JSON output wraps diagnostics in a `diagnostics` array:

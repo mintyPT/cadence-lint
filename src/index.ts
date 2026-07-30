@@ -535,9 +535,10 @@ function buildStructureContext(
     .slice(0, mismatchIndex)
     .flatMap((analysis) => analysis.sentences)
     .slice(-2);
+  const mismatchSentences = paragraphAnalyses[mismatchIndex]?.sentences ?? [];
 
   return {
-    previousSentences,
+    previousSentences: [...previousSentences, ...mismatchSentences],
     mismatchParagraph: mismatchIndex + 1,
     ...(expectedSentenceCount === undefined
       ? {}
