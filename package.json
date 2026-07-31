@@ -1,6 +1,6 @@
 {
   "name": "cadence-lint",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lint prose structure and cadence from Markdown.",
   "type": "module",
   "license": "MIT",
