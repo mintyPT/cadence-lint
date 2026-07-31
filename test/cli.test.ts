@@ -605,6 +605,61 @@ describe("cli", () => {
     expect(result.stdout).toBe("cadence-lint: no issues found");
   }, cliTestTimeout);
 
+  it("loads anchored section alternatives from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "guide.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sections": {',
+        '    "overview": {',
+        '      "start": ["1/3/1", "3/1"],',
+        '      "middle": ["1/5/1", "1/4/2"],',
+        '      "end": ["1/2/1"]',
+        "    }",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "<!-- cadence:overview -->",
+        "",
+        "First sentence. Second sentence. Third sentence.",
+        "",
+        "Start closes.",
+        "",
+        "Middle one opens.",
+        "",
+        "One. Two. Three. Four. Five.",
+        "",
+        "Middle one closes.",
+        "",
+        "Middle two opens.",
+        "",
+        "One. Two. Three. Four.",
+        "",
+        "Two-sentence close. Still closing.",
+        "",
+        "Final opens.",
+        "",
+        "One. Two.",
+        "",
+        "Final closes.",
+        "",
+        "<!-- /cadence:overview -->",
+      ].join("\n"),
+    );
+
+    const result = await execa("tsx", [join(process.cwd(), "src/cli/index.ts"), filePath], {
+      cwd: directory,
+    });
+
+    expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
   it("loads issue-style described count arrays as one section structure", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");
