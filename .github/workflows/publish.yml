@@ -21,6 +21,8 @@ jobs:
     name: Publish package
     runs-on: ubuntu-latest
     if: github.event.inputs.confirm-package == 'cadence-lint'
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     steps:
       - name: Check out repository
@@ -65,6 +67,16 @@ jobs:
       - name: Verify package contents
         run: npm run release:check
 
+      - name: Report npm publish auth mode
+        shell: bash
+        run: |
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "Publishing with the NPM_TOKEN repository secret."
+          else
+            echo "Publishing with npm trusted publishing (GitHub Actions OIDC)."
+            echo "Configure npm trusted publishing for this repository and .github/workflows/publish.yml, or add an NPM_TOKEN repository secret."
+          fi
+
       - name: Prepare release commit
         shell: bash
         run: |
@@ -79,6 +91,11 @@ jobs:
           if ! git rev-parse "${{ steps.release.outputs.release-tag }}" >/dev/null 2>&1; then
             git tag -a "${{ steps.release.outputs.release-tag }}" -m "${{ steps.release.outputs.release-tag }}"
           fi
+
+      - name: Configure npm token fallback
+        if: env.NPM_TOKEN != ''
+        shell: bash
+        run: npm config set //registry.npmjs.org/:_authToken "${NPM_TOKEN}"
 
       - name: Publish to npm
         run: npm publish --access public --provenance
