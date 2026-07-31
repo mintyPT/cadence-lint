@@ -666,6 +666,56 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("loads introduction rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "introduction": {',
+        '    "heading": "Introduction",',
+        '    "maxParagraphs": 1,',
+        '    "allowedStructures": ["2"],',
+        '    "requireLastSentenceMarker": ["This essay argues"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "Context opens.",
+        "",
+        "The point is implied.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Introduction has 2 paragraphs; expected <= 1.",
+        }),
+        expect.objectContaining({
+          message: "Introduction sentence structure does not match allowed structures.",
+          observedStructure: "1/1",
+        }),
+        expect.objectContaining({
+          message: "Introduction final sentence is missing a required marker phrase.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
   it("loads described section structures from cadence.config.jsonc", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");

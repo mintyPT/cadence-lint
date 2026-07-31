@@ -662,6 +662,102 @@ describe("lintMarkdown", () => {
     );
   });
 
+  it("passes introductions within paragraph limits and allowed structures", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "Context opens the piece. It names the tension.",
+        "",
+        "This essay argues the point.",
+      ].join("\n"),
+      {
+        introduction: {
+          maxParagraphs: 2,
+          allowedStructures: [[2, 1]],
+          requireLastSentenceMarker: ["This essay argues"],
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("reports introductions that exceed the paragraph limit", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "One.",
+        "",
+        "Two.",
+        "",
+        "Three.",
+      ].join("\n"),
+      {
+        introduction: {
+          maxParagraphs: 2,
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Introduction has 3 paragraphs; expected <= 2.",
+        observedStructure: "1/1/1",
+        expectedStructures: ["paragraphs <= 2"],
+      }),
+    );
+  });
+
+  it("reports introductions whose sentence structure is not allowed", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "One sentence.",
+        "",
+        "Two sentences here. Still second paragraph.",
+      ].join("\n"),
+      {
+        introduction: {
+          allowedStructures: [[2, 1], [3]],
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Introduction sentence structure does not match allowed structures.",
+        observedStructure: "1/2",
+        expectedStructures: ["2/1", "3"],
+      }),
+    );
+  });
+
+  it("reports introductions whose final sentence lacks a required marker", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "Context opens. The point is implied.",
+      ].join("\n"),
+      {
+        introduction: {
+          requireLastSentenceMarker: ["This essay argues", "I argue"],
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Introduction final sentence is missing a required marker phrase.",
+        observedStructure: "The point is implied.",
+        expectedStructures: ["This essay argues", "I argue"],
+      }),
+    );
+  });
+
   it("reports anchored expected structure details with placement on mismatches", () => {
     const markdown = [
       "<!-- cadence:overview -->",

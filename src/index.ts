@@ -122,6 +122,13 @@ export interface TitleOptions {
   maxSubtitleCharacters?: number;
 }
 
+export interface IntroductionOptions {
+  heading?: string;
+  maxParagraphs?: number;
+  allowedStructures?: readonly SectionStructurePattern[];
+  requireLastSentenceMarker?: readonly string[];
+}
+
 export interface LintMarkdownOptions {
   filePath?: string;
   language?: string;
@@ -132,6 +139,7 @@ export interface LintMarkdownOptions {
   listBalance?: ListBalanceOptions;
   headingOrder?: readonly string[];
   title?: TitleOptions;
+  introduction?: IntroductionOptions;
 }
 
 export interface LintResult {
@@ -166,6 +174,10 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
       ...lintListBalance(document, filePath, options.listBalance),
       ...lintHeadingOrder(document, filePath, options.headingOrder),
       ...lintTitle(document, filePath, options.title),
+      ...lintIntroduction(document, filePath, options.introduction, {
+        language,
+        protectedPatterns: options.protectedPatterns ?? [],
+      }),
     ],
   };
 }
@@ -496,6 +508,110 @@ function lintTitle(
   );
 
   return diagnostics;
+}
+
+function lintIntroduction(
+  document: MarkdownDocument,
+  filePath: string,
+  options: IntroductionOptions | undefined,
+  sentenceOptions: { language: string; protectedPatterns: readonly RegExp[] },
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const headingText = options.heading ?? "Introduction";
+  const section = document.sections.find((item) => item.heading.text === headingText);
+
+  if (section === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+  const paragraphAnalyses = section.paragraphs.map((paragraph) =>
+    analyzeParagraphStructure(paragraph, sentenceOptions),
+  );
+  const observedStructure = paragraphAnalyses.map((analysis) => analysis.sentenceCount);
+
+  if (
+    options.maxParagraphs !== undefined &&
+    section.paragraphs.length > options.maxParagraphs
+  ) {
+    diagnostics.push({
+      severity: "error",
+      message: `Introduction has ${section.paragraphs.length} paragraphs; expected <= ${options.maxParagraphs}.`,
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: formatStructure(observedStructure),
+      expectedStructures: [`paragraphs <= ${options.maxParagraphs}`],
+    });
+  }
+
+  if (
+    options.allowedStructures !== undefined &&
+    options.allowedStructures.length > 0 &&
+    !options.allowedStructures
+      .map(normalizeSectionStructure)
+      .some((structure) => structuresEqual(observedStructure, structure.counts))
+  ) {
+    diagnostics.push({
+      severity: "error",
+      message: "Introduction sentence structure does not match allowed structures.",
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: formatStructure(observedStructure),
+      expectedStructures: options.allowedStructures
+        .map(normalizeSectionStructure)
+        .map((structure) => formatStructure(structure.counts)),
+    });
+  }
+
+  const finalSentence = paragraphAnalyses.at(-1)?.sentences.at(-1);
+  if (
+    options.requireLastSentenceMarker !== undefined &&
+    options.requireLastSentenceMarker.length > 0 &&
+    (finalSentence === undefined ||
+      !options.requireLastSentenceMarker.some((marker) => finalSentence.includes(marker)))
+  ) {
+    diagnostics.push({
+      severity: "error",
+      message: "Introduction final sentence is missing a required marker phrase.",
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: finalSentence ?? "",
+      expectedStructures: options.requireLastSentenceMarker,
+    });
+  }
+
+  return diagnostics;
+}
+
+function structuresEqual(left: readonly number[], right: readonly number[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function findSubtitleParagraph(

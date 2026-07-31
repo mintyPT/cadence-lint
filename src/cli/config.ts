@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   parseStructurePattern,
+  type IntroductionOptions,
   type ListBalanceOptions,
   type SectionBalanceOptions,
   type SectionStructure,
@@ -20,6 +21,7 @@ export interface CadenceCliConfig {
   listBalance?: ListBalanceOptions;
   headingOrder?: readonly string[];
   title?: TitleOptions;
+  introduction?: IntroductionOptions;
 }
 
 export async function loadCadenceConfig(options: {
@@ -59,6 +61,7 @@ export async function loadCadenceConfig(options: {
       ),
     ),
     ...withOptionalConfig("title", readTitle(parsed)),
+    ...withOptionalConfig("introduction", readIntroduction(parsed)),
   };
 }
 
@@ -444,6 +447,50 @@ function readTitle(config: unknown): TitleOptions | undefined {
       readOptionalPositiveInteger(
         config.title.maxSubtitleCharacters,
         "cadence-lint: config title.maxSubtitleCharacters must be a positive integer",
+      ),
+    ),
+  };
+}
+
+function readIntroduction(config: unknown): IntroductionOptions | undefined {
+  if (!isRecord(config) || config.introduction === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.introduction)) {
+    throw new Error("cadence-lint: config introduction must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "heading",
+      readOptionalString(
+        config.introduction.heading,
+        "cadence-lint: config introduction.heading must be a string",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxParagraphs",
+      readOptionalPositiveInteger(
+        config.introduction.maxParagraphs,
+        "cadence-lint: config introduction.maxParagraphs must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "allowedStructures",
+      config.introduction.allowedStructures === undefined
+        ? undefined
+        : readPatternBucket(
+            "introduction",
+            "any",
+            config.introduction.allowedStructures,
+          ),
+    ),
+    ...withOptionalConfig(
+      "requireLastSentenceMarker",
+      readStringArray(
+        config.introduction.requireLastSentenceMarker,
+        "cadence-lint: config introduction.requireLastSentenceMarker must be an array of strings",
       ),
     ),
   };
