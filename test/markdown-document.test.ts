@@ -80,7 +80,7 @@ describe("parseMarkdownDocument", () => {
     ]);
   });
 
-  it("extracts headings, list blocks, and heading sections", () => {
+  it("extracts headings, list blocks, and heading sections without changing public blocks", () => {
     const document = parseMarkdownDocument([
       "# Title",
       "",
@@ -95,6 +95,17 @@ describe("parseMarkdownDocument", () => {
       "Body paragraph.",
     ].join("\n"));
 
+    expect(document.blocks.map((block) => block.type)).toEqual([
+      "paragraph",
+      "paragraph",
+    ]);
+    expect(document.contentBlocks.map((block) => block.type)).toEqual([
+      "heading",
+      "paragraph",
+      "heading",
+      "list",
+      "paragraph",
+    ]);
     expect(document.headings).toEqual([
       expect.objectContaining({ type: "heading", depth: 1, text: "Title", line: 1 }),
       expect.objectContaining({ type: "heading", depth: 2, text: "Body", line: 5 }),

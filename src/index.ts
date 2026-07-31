@@ -22,6 +22,7 @@ export { parseStructurePattern } from "./structure-patterns.js";
 export {
   parseMarkdownDocument,
   type MarkdownBlock,
+  type MarkdownContentBlock,
   type MarkdownDocument,
   type MarkdownHeadingBlock,
   type MarkdownHtmlCommentBlock,
@@ -57,6 +58,7 @@ import type {
 } from "./diagnostics.js";
 import {
   parseMarkdownDocument,
+  type MarkdownContentBlock,
   type MarkdownDocument,
   type MarkdownParagraph,
   type MarkdownSection,
@@ -169,6 +171,7 @@ export interface LintMarkdownOptions {
   language?: string;
   allowedSectionNames?: readonly string[];
   sectionRules?: SectionStructureRules;
+  headingSectionRules?: SectionStructureRules;
   protectedPatterns?: readonly RegExp[];
   sectionBalance?: SectionBalanceOptions;
   listBalance?: ListBalanceOptions;
@@ -193,6 +196,11 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
     (options.sectionRules === undefined ? undefined : Object.keys(options.sectionRules));
   const language = options.language ?? "en";
   validateSentenceLanguage(language);
+  const sentenceOptions = {
+    language,
+    protectedPatterns: options.protectedPatterns ?? [],
+  };
+  const analyzeParagraph = createParagraphAnalyzer(sentenceOptions);
   const diagnostics = validateCadenceMarkers(document, {
     filePath,
     allowedSectionNames,
@@ -202,27 +210,31 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
     diagnostics: [
       ...diagnostics,
       ...lintCadenceMarkerCoverage(document, filePath),
-      ...lintMarkedSectionStructures(document, filePath, options.sectionRules ?? {}, {
-        language,
-        protectedPatterns: options.protectedPatterns ?? [],
-      }),
-      ...lintSectionBalance(document, filePath, options.sectionBalance, {
-        language,
-        protectedPatterns: options.protectedPatterns ?? [],
-      }),
+      ...lintMarkedSectionStructures(
+        document,
+        filePath,
+        options.sectionRules ?? {},
+        analyzeParagraph,
+      ),
+      ...lintHeadingSectionStructures(
+        document,
+        filePath,
+        options.headingSectionRules ?? {},
+        analyzeParagraph,
+      ),
+      ...lintSectionBalance(
+        document,
+        filePath,
+        options.sectionBalance,
+        analyzeParagraph,
+      ),
       ...lintListBalance(document, filePath, options.listBalance),
       ...lintHeadingOrder(document, filePath, options.headingOrder),
       ...lintTitle(document, filePath, options.title),
-      ...lintIntroduction(document, filePath, options.introduction, {
-        language,
-        protectedPatterns: options.protectedPatterns ?? [],
-      }),
-      ...lintWording(markdown, filePath, options.wording),
+      ...lintIntroduction(document, filePath, options.introduction, analyzeParagraph),
+      ...lintWording(document, filePath, options.wording),
       ...lintLists(document, filePath, options.lists),
-      ...lintTransitions(document, filePath, options.transitions, {
-        language,
-        protectedPatterns: options.protectedPatterns ?? [],
-      }),
+      ...lintTransitions(document, filePath, options.transitions, analyzeParagraph),
       ...lintHeadings(document, filePath, options.headings),
     ],
   };
@@ -247,7 +259,7 @@ function lintMarkedSectionStructures(
   document: ReturnType<typeof parseMarkdownDocument>,
   filePath: string,
   sectionRules: SectionStructureRules,
-  options: { language: string; protectedPatterns: readonly RegExp[] },
+  analyzeParagraph: ParagraphAnalyzer,
 ): LintDiagnostic[] {
   const diagnostics: LintDiagnostic[] = [];
 
@@ -258,9 +270,7 @@ function lintMarkedSectionStructures(
       continue;
     }
 
-    const paragraphAnalyses = section.paragraphs.map((paragraph) =>
-      analyzeParagraphStructure(paragraph, options),
-    );
+    const paragraphAnalyses = section.paragraphs.map(analyzeParagraph);
     const observedStructure = paragraphAnalyses.map(
       (analysis) => analysis.sentenceCount,
     );
@@ -324,11 +334,75 @@ function lintMarkedSectionStructures(
   return diagnostics;
 }
 
+function lintHeadingSectionStructures(
+  document: MarkdownDocument,
+  filePath: string,
+  sectionRules: SectionStructureRules,
+  analyzeParagraph: ParagraphAnalyzer,
+): LintDiagnostic[] {
+  const diagnostics: LintDiagnostic[] = [];
+
+  for (const section of document.sections) {
+    const allowedStructures =
+      sectionRules[section.heading.text] ??
+      sectionRules[normalizeHeadingId(section.heading.text)];
+
+    if (allowedStructures === undefined || section.paragraphs.length === 0) {
+      continue;
+    }
+
+    const paragraphAnalyses = section.paragraphs.map(analyzeParagraph);
+    const observedStructure = paragraphAnalyses.map(
+      (analysis) => analysis.sentenceCount,
+    );
+    const normalizedRule = normalizeSectionRule(allowedStructures);
+    const result = matchAnchoredSequence(
+      observedStructure,
+      toMatcherPatterns(normalizedRule),
+    );
+    const expectedStructures = flattenSectionRule(normalizedRule);
+
+    if (result.passed) {
+      continue;
+    }
+
+    diagnostics.push({
+      severity: "error",
+      message: `Heading section '${section.heading.text}' paragraph structure does not match allowed structures.`,
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: formatStructure(observedStructure),
+      expectedStructures: expectedStructures.map(({ structure }) =>
+        formatStructure(structure.counts),
+      ),
+      ...withExpectedStructureDetails(expectedStructures),
+    });
+  }
+
+  return diagnostics;
+}
+
+function normalizeHeadingId(heading: string): string {
+  return heading
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 function lintSectionBalance(
   document: MarkdownDocument,
   filePath: string,
   options: SectionBalanceOptions | undefined,
-  sentenceOptions: { language: string; protectedPatterns: readonly RegExp[] },
+  analyzeParagraph: ParagraphAnalyzer,
 ): LintDiagnostic[] {
   if (options === undefined || document.sections.length < 2) {
     return [];
@@ -339,7 +413,7 @@ function lintSectionBalance(
     .filter((section) => !ignoredHeadings.has(section.heading.text))
     .map((section) => ({
       section,
-      size: measureSection(section, options.measure, sentenceOptions),
+      size: measureSection(section, options.measure, analyzeParagraph),
     }));
 
   if (measuredSections.length < 2) {
@@ -392,8 +466,8 @@ function lintListBalance(
 
   const diagnostics: LintDiagnostic[] = [];
   const blockGroups = document.sections.length > 0
-    ? document.sections.map((section) => section.blocks)
-    : [document.blocks];
+    ? [blocksBeforeFirstHeading(document), ...document.sections.map((section) => section.blocks)]
+    : [document.contentBlocks];
 
   for (const blocks of blockGroups) {
     let consecutiveLists = 0;
@@ -560,7 +634,7 @@ function lintIntroduction(
   document: MarkdownDocument,
   filePath: string,
   options: IntroductionOptions | undefined,
-  sentenceOptions: { language: string; protectedPatterns: readonly RegExp[] },
+  analyzeParagraph: ParagraphAnalyzer,
 ): LintDiagnostic[] {
   if (options === undefined) {
     return [];
@@ -574,9 +648,9 @@ function lintIntroduction(
   }
 
   const diagnostics: LintDiagnostic[] = [];
-  const paragraphAnalyses = section.paragraphs.map((paragraph) =>
-    analyzeParagraphStructure(paragraph, sentenceOptions),
-  );
+  const paragraphAnalyses = section.paragraphs.map(analyzeParagraph);
+  const allowedStructures =
+    options.allowedStructures?.map(normalizeSectionStructure) ?? [];
   const observedStructure = paragraphAnalyses.map((analysis) => analysis.sentenceCount);
 
   if (
@@ -602,11 +676,10 @@ function lintIntroduction(
   }
 
   if (
-    options.allowedStructures !== undefined &&
-    options.allowedStructures.length > 0 &&
-    !options.allowedStructures
-      .map(normalizeSectionStructure)
-      .some((structure) => structuresEqual(observedStructure, structure.counts))
+    allowedStructures.length > 0 &&
+    !allowedStructures.some((structure) =>
+      structuresEqual(observedStructure, structure.counts),
+    )
   ) {
     diagnostics.push({
       severity: "error",
@@ -622,9 +695,9 @@ function lintIntroduction(
         level: section.heading.depth,
       },
       observedStructure: formatStructure(observedStructure),
-      expectedStructures: options.allowedStructures
-        .map(normalizeSectionStructure)
-        .map((structure) => formatStructure(structure.counts)),
+      expectedStructures: allowedStructures.map((structure) =>
+        formatStructure(structure.counts),
+      ),
     });
   }
 
@@ -661,7 +734,7 @@ function structuresEqual(left: readonly number[], right: readonly number[]): boo
 }
 
 function lintWording(
-  markdown: string,
+  document: MarkdownDocument,
   filePath: string,
   options: WordingOptions | undefined,
 ): LintDiagnostic[] {
@@ -686,32 +759,34 @@ function lintWording(
     }
   }
 
-  const uniqueTerms = [...termsBySource.keys()];
+  const termPatterns = [...termsBySource.entries()].map(([term, source]) => ({
+    term,
+    source,
+    pattern: new RegExp(
+      `(?<![A-Za-z0-9])${escapeRegExp(term).replace(/\\ /g, "\\s+")}(?![A-Za-z0-9])`,
+      "gi",
+    ),
+  }));
 
-  if (uniqueTerms.length === 0) {
+  if (termPatterns.length === 0) {
     return [];
   }
 
   const diagnostics: LintDiagnostic[] = [];
-  const lines = markdown.split(/\r?\n/);
 
-  lines.forEach((line, lineIndex) => {
-    for (const term of uniqueTerms) {
-      const source = termsBySource.get(term) ?? "custom";
-      const pattern = new RegExp(
-        `(?<![A-Za-z0-9])${escapeRegExp(term).replace(/\\ /g, "\\s+")}(?![A-Za-z0-9])`,
-        "gi",
-      );
+  document.paragraphs.forEach((paragraph) => {
+    for (const { term, source, pattern } of termPatterns) {
+      pattern.lastIndex = 0;
       let match: RegExpExecArray | null;
 
-      while ((match = pattern.exec(line)) !== null) {
+      while ((match = pattern.exec(paragraph.text)) !== null) {
         diagnostics.push({
           severity: "error",
           message: `Wording uses banned ${source} term '${match[0]}'.`,
           location: {
             filePath,
-            line: lineIndex + 1,
-            column: match.index + 1,
+            line: paragraph.line,
+            column: paragraph.column + match.index,
           },
           observedStructure: match[0],
           expectedStructures: [`avoid ${term}`],
@@ -815,7 +890,7 @@ function lintTransitions(
   document: MarkdownDocument,
   filePath: string,
   options: TransitionsOptions | undefined,
-  sentenceOptions: { language: string; protectedPatterns: readonly RegExp[] },
+  analyzeParagraph: ParagraphAnalyzer,
 ): LintDiagnostic[] {
   if (options === undefined || options.allowedStarts.length === 0) {
     return [];
@@ -841,7 +916,7 @@ function lintTransitions(
     const firstParagraph = section.paragraphs[0];
     const firstSentence = firstParagraph === undefined
       ? undefined
-      : analyzeParagraphStructure(firstParagraph, sentenceOptions).sentences[0];
+      : analyzeParagraph(firstParagraph).sentences[0];
     const comparableSentence = caseSensitive
       ? firstSentence
       : firstSentence?.toLocaleLowerCase();
@@ -1029,7 +1104,7 @@ function textBoundDiagnostic(
 }
 
 function hasAdjacentParagraph(
-  blocks: readonly MarkdownDocument["blocks"][number][],
+  blocks: readonly MarkdownContentBlock[],
   index: number,
   direction: -1 | 1,
 ): boolean {
@@ -1041,7 +1116,7 @@ function hasAdjacentParagraph(
 function measureSection(
   section: MarkdownSection,
   measure: SectionBalanceMeasure,
-  sentenceOptions: { language: string; protectedPatterns: readonly RegExp[] },
+  analyzeParagraph: ParagraphAnalyzer,
 ): number {
   if (measure === "paragraphs") {
     return section.paragraphs.length;
@@ -1050,7 +1125,7 @@ function measureSection(
   if (measure === "sentences") {
     return section.paragraphs.reduce(
       (total, paragraph) =>
-        total + analyzeParagraphStructure(paragraph, sentenceOptions).sentenceCount,
+        total + analyzeParagraph(paragraph).sentenceCount,
       0,
     );
   }
@@ -1067,6 +1142,40 @@ function countWords(text: string): number {
 
 function formatRatio(ratio: number): string {
   return Number.isFinite(ratio) ? ratio.toFixed(2) : "Infinity";
+}
+
+type ParagraphAnalyzer = (paragraph: MarkdownParagraph) => ParagraphStructureAnalysis;
+
+function createParagraphAnalyzer(options: {
+  language: string;
+  protectedPatterns: readonly RegExp[];
+}): ParagraphAnalyzer {
+  const cache = new Map<MarkdownParagraph, ParagraphStructureAnalysis>();
+
+  return (paragraph) => {
+    const cached = cache.get(paragraph);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const analysis = analyzeParagraphStructure(paragraph, options);
+    cache.set(paragraph, analysis);
+
+    return analysis;
+  };
+}
+
+function blocksBeforeFirstHeading(document: MarkdownDocument): MarkdownContentBlock[] {
+  const firstHeadingIndex = document.contentBlocks.findIndex(
+    (block) => block.type === "heading",
+  );
+
+  if (firstHeadingIndex === -1) {
+    return document.contentBlocks;
+  }
+
+  return document.contentBlocks.slice(0, firstHeadingIndex);
 }
 
 interface NormalizedSectionRule {

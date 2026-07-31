@@ -20,6 +20,7 @@ import {
 export interface CadenceCliConfig {
   language: string;
   sectionRules: SectionStructureRules;
+  headingSectionRules: SectionStructureRules;
   protectedPatterns: readonly RegExp[];
   sectionBalance?: SectionBalanceOptions;
   listBalance?: ListBalanceOptions;
@@ -58,6 +59,7 @@ export async function loadCadenceConfig(options: {
   return {
     language: readLanguage(parsed),
     sectionRules: readSectionRules(parsed),
+    headingSectionRules: readHeadingSectionRules(parsed),
     protectedPatterns: readProtectedPatterns(parsed),
     ...withOptionalConfig("sectionBalance", readSectionBalance(parsed)),
     ...withOptionalConfig("listBalance", readListBalance(parsed)),
@@ -81,6 +83,7 @@ export function defaultConfig(): CadenceCliConfig {
   return {
     language: "en",
     sectionRules: {},
+    headingSectionRules: {},
     protectedPatterns: [],
   };
 }
@@ -122,9 +125,27 @@ function readSectionRules(config: unknown): SectionStructureRules {
     throw new Error("cadence-lint: config sections must be an object");
   }
 
+  return readSectionRuleEntries(config.sections);
+}
+
+function readHeadingSectionRules(config: unknown): SectionStructureRules {
+  if (!isRecord(config) || config.headingSections === undefined) {
+    return {};
+  }
+
+  if (!isRecord(config.headingSections)) {
+    throw new Error("cadence-lint: config headingSections must be an object");
+  }
+
+  return readSectionRuleEntries(config.headingSections);
+}
+
+function readSectionRuleEntries(
+  rules: Record<string, unknown>,
+): SectionStructureRules {
   const sectionRules: SectionStructureRules = {};
 
-  for (const [sectionName, patterns] of Object.entries(config.sections)) {
+  for (const [sectionName, patterns] of Object.entries(rules)) {
     if (isAnchoredSectionRuleObject(patterns)) {
       sectionRules[sectionName] = readAnchoredSectionRule(sectionName, patterns);
       continue;

@@ -852,6 +852,31 @@ describe("lintMarkdown", () => {
     );
   });
 
+  it("does not run vague-word checks on non-prose Markdown blocks", () => {
+    const result = lintMarkdown(
+      [
+        "```",
+        "improve some code",
+        "```",
+        "",
+        "- improve list item",
+        "",
+        "| term |",
+        "| --- |",
+        "| improve |",
+      ].join("\n"),
+      {
+        wording: {},
+      },
+    );
+
+    expect(
+      result.diagnostics.filter((diagnostic) =>
+        diagnostic.message.startsWith("Wording uses banned"),
+      ),
+    ).toEqual([]);
+  });
+
   it("passes lists within item count, word count, nesting, and prefix limits", () => {
     const result = lintMarkdown(
       [
@@ -1136,6 +1161,166 @@ describe("lintMarkdown", () => {
     });
 
     expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("passes heading sections whose paragraph sentence structure matches an allowed pattern", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "The draft opens with context. It names the tension.",
+        "",
+        "The final sentence states the point.",
+      ].join("\n"),
+      {
+        headingSectionRules: {
+          Introduction: [[2, 1]],
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("reports configured heading sections whose paragraph structure does not match", () => {
+    const result = lintMarkdown(
+      [
+        "## Conclusion",
+        "",
+        "The piece closes. It adds a new point. It keeps going.",
+      ].join("\n"),
+      {
+        filePath: "essay.md",
+        headingSectionRules: {
+          Conclusion: [[1, 2], [2]],
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Heading section 'Conclusion' paragraph structure does not match allowed structures.",
+        location: {
+          filePath: "essay.md",
+          line: 1,
+          column: 1,
+        },
+        section: {
+          title: "Conclusion",
+          line: 1,
+          level: 2,
+        },
+        observedStructure: "3",
+        expectedStructures: ["1/2", "2"],
+      }),
+    );
+  });
+
+  it("ignores unconfigured heading sections for paragraph shape", () => {
+    const result = lintMarkdown(
+      [
+        "## Aside",
+        "",
+        "One. Two. Three.",
+      ].join("\n"),
+      {
+        headingSectionRules: {
+          Introduction: [[1]],
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("matches heading section rules by normalized heading id", () => {
+    const result = lintMarkdown(
+      [
+        "## Main Argument",
+        "",
+        "One. Two.",
+      ].join("\n"),
+      {
+        headingSectionRules: {
+          "main-argument": [[1]],
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Heading section 'Main Argument' paragraph structure does not match allowed structures.",
+        observedStructure: "2",
+        expectedStructures: ["1"],
+      }),
+    );
+  });
+
+  it("uses anchored section rule semantics for heading sections", () => {
+    const result = lintMarkdown(
+      [
+        "## Intro",
+        "",
+        "Opening.",
+        "",
+        "Second sentence. Third sentence.",
+      ].join("\n"),
+      {
+        headingSectionRules: {
+          Intro: {
+            start: [[1]],
+            end: [[2]],
+          },
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("does not apply cadence section rules to plain Markdown heading sections", () => {
+    const result = lintMarkdown(
+      [
+        "## intro",
+        "",
+        "One. Two.",
+      ].join("\n"),
+      {
+        sectionRules: {
+          intro: [[1]],
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("checks list balance for lists before the first heading", () => {
+    const result = lintMarkdown(
+      [
+        "- Preamble list",
+        "",
+        "## Body",
+        "",
+        "Paragraph.",
+      ].join("\n"),
+      {
+        listBalance: {
+          requireParagraphBeforeList: true,
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "List balance requires a prose paragraph before each list.",
+        location: {
+          filePath: "<input>",
+          line: 1,
+          column: 1,
+        },
+      }),
+    );
   });
 
   it("reports anchored expected structure details with placement on mismatches", () => {

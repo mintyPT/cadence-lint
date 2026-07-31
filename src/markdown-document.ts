@@ -62,7 +62,9 @@ export interface MarkdownHtmlCommentBlock {
   endColumn: number;
 }
 
-export type MarkdownBlock =
+export type MarkdownBlock = MarkdownParagraphBlock | MarkdownHtmlCommentBlock;
+
+export type MarkdownContentBlock =
   | MarkdownParagraphBlock
   | MarkdownHtmlCommentBlock
   | MarkdownHeadingBlock
@@ -70,12 +72,13 @@ export type MarkdownBlock =
 
 export interface MarkdownSection {
   heading: MarkdownHeadingBlock;
-  blocks: readonly MarkdownBlock[];
+  blocks: readonly MarkdownContentBlock[];
   paragraphs: readonly MarkdownParagraph[];
 }
 
 export interface MarkdownDocument {
   blocks: MarkdownBlock[];
+  contentBlocks: MarkdownContentBlock[];
   paragraphs: MarkdownParagraph[];
   headings: MarkdownHeadingBlock[];
   lists: MarkdownListBlock[];
@@ -84,28 +87,33 @@ export interface MarkdownDocument {
 
 export function parseMarkdownDocument(markdown: string): MarkdownDocument {
   const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as Root;
-  const blocks = collectBlocks(tree);
-  const paragraphs = blocks
+  const contentBlocks = collectContentBlocks(tree);
+  const blocks = contentBlocks.filter(
+    (block): block is MarkdownBlock =>
+      block.type === "paragraph" || block.type === "htmlComment",
+  );
+  const paragraphs = contentBlocks
     .filter((block): block is MarkdownParagraphBlock => block.type === "paragraph")
     .map(({ type: _type, ...paragraph }) => paragraph);
-  const headings = blocks.filter(
+  const headings = contentBlocks.filter(
     (block): block is MarkdownHeadingBlock => block.type === "heading",
   );
-  const lists = blocks.filter(
+  const lists = contentBlocks.filter(
     (block): block is MarkdownListBlock => block.type === "list",
   );
 
   return {
     blocks,
+    contentBlocks,
     paragraphs,
     headings,
     lists,
-    sections: collectSections(blocks),
+    sections: collectSections(contentBlocks),
   };
 }
 
-function collectBlocks(root: Root): MarkdownBlock[] {
-  const blocks: MarkdownBlock[] = [];
+function collectContentBlocks(root: Root): MarkdownContentBlock[] {
+  const blocks: MarkdownContentBlock[] = [];
 
   for (const node of root.children) {
     const block = toMarkdownBlock(node);
@@ -120,7 +128,7 @@ function collectBlocks(root: Root): MarkdownBlock[] {
   return blocks;
 }
 
-function toMarkdownBlock(node: RootContent): MarkdownBlock | undefined {
+function toMarkdownBlock(node: RootContent): MarkdownContentBlock | undefined {
   if (node.type === "heading" && node.position !== undefined) {
     return toMarkdownHeading(node);
   }
@@ -232,11 +240,11 @@ function toMarkdownParagraph(paragraph: Paragraph): MarkdownParagraph {
   };
 }
 
-function collectSections(blocks: readonly MarkdownBlock[]): MarkdownSection[] {
+function collectSections(blocks: readonly MarkdownContentBlock[]): MarkdownSection[] {
   const sections: MarkdownSection[] = [];
   let currentSection: {
     heading: MarkdownHeadingBlock;
-    blocks: MarkdownBlock[];
+    blocks: MarkdownContentBlock[];
     paragraphs: MarkdownParagraph[];
   } | undefined;
 

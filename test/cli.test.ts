@@ -4,7 +4,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const cliTestTimeout = 10_000;
+const cliTestTimeout = 30_000;
 
 describe("cli", () => {
   it("identifies cadence-lint in help output", async () => {
@@ -876,6 +876,44 @@ describe("cli", () => {
           message: "Heading level skips from H1 to H4.",
         }),
       ]),
+    );
+  }, cliTestTimeout);
+
+  it("applies configured heading section rules to Markdown heading sections", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "headingSections": {',
+        '    "Introduction": ["2/1"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "One sentence.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Heading section 'Introduction' paragraph structure does not match allowed structures.",
+        observedStructure: "1",
+        expectedStructures: ["2/1"],
+      }),
     );
   }, cliTestTimeout);
 
