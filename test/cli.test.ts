@@ -580,6 +580,50 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("loads required heading order from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "headingOrder": ["Introduction", "Argument", "Conclusion"]',
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "Opening.",
+        "",
+        "## Conclusion",
+        "",
+        "Closing.",
+        "",
+        "## Argument",
+        "",
+        "Point.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Heading 'Argument' appears before a required earlier heading.",
+        observedStructure: "Introduction -> Conclusion -> Argument",
+        expectedStructures: ["Introduction -> Argument -> Conclusion"],
+      }),
+    );
+  }, cliTestTimeout);
+
   it("loads described section structures from cadence.config.jsonc", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");

@@ -485,6 +485,88 @@ describe("lintMarkdown", () => {
     );
   });
 
+  it("passes configured headings that appear in order", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "Opening.",
+        "",
+        "## Argument",
+        "",
+        "Point.",
+        "",
+        "## Conclusion",
+        "",
+        "Closing.",
+      ].join("\n"),
+      {
+        headingOrder: ["Introduction", "Argument", "Conclusion"],
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("reports configured headings that appear out of order", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "Opening.",
+        "",
+        "## Conclusion",
+        "",
+        "Closing.",
+        "",
+        "## Argument",
+        "",
+        "Point.",
+      ].join("\n"),
+      {
+        filePath: "essay.md",
+        headingOrder: ["Introduction", "Argument", "Conclusion"],
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        message: "Heading 'Argument' appears before a required earlier heading.",
+        location: {
+          filePath: "essay.md",
+          line: 9,
+          column: 1,
+        },
+        observedStructure: "Introduction -> Conclusion -> Argument",
+        expectedStructures: ["Introduction -> Argument -> Conclusion"],
+      }),
+    );
+  });
+
+  it("ignores extra headings in required heading order checks", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "Opening.",
+        "",
+        "## Aside",
+        "",
+        "Extra.",
+        "",
+        "## Argument",
+        "",
+        "Point.",
+      ].join("\n"),
+      {
+        headingOrder: ["Introduction", "Argument"],
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
   it("reports anchored expected structure details with placement on mismatches", () => {
     const markdown = [
       "<!-- cadence:overview -->",

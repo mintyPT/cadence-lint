@@ -17,6 +17,7 @@ export interface CadenceCliConfig {
   protectedPatterns: readonly RegExp[];
   sectionBalance?: SectionBalanceOptions;
   listBalance?: ListBalanceOptions;
+  headingOrder?: readonly string[];
 }
 
 export async function loadCadenceConfig(options: {
@@ -48,6 +49,13 @@ export async function loadCadenceConfig(options: {
     protectedPatterns: readProtectedPatterns(parsed),
     ...withOptionalConfig("sectionBalance", readSectionBalance(parsed)),
     ...withOptionalConfig("listBalance", readListBalance(parsed)),
+    ...withOptionalConfig(
+      "headingOrder",
+      readStringArray(
+        isRecord(parsed) ? parsed.headingOrder : undefined,
+        "cadence-lint: config headingOrder must be an array of strings",
+      ),
+    ),
   };
 }
 

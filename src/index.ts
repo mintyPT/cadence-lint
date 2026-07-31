@@ -120,6 +120,7 @@ export interface LintMarkdownOptions {
   protectedPatterns?: readonly RegExp[];
   sectionBalance?: SectionBalanceOptions;
   listBalance?: ListBalanceOptions;
+  headingOrder?: readonly string[];
 }
 
 export interface LintResult {
@@ -152,6 +153,7 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
         protectedPatterns: options.protectedPatterns ?? [],
       }),
       ...lintListBalance(document, filePath, options.listBalance),
+      ...lintHeadingOrder(document, filePath, options.headingOrder),
     ],
   };
 }
@@ -380,6 +382,57 @@ function lintListBalance(
   }
 
   return diagnostics;
+}
+
+function lintHeadingOrder(
+  document: MarkdownDocument,
+  filePath: string,
+  expectedOrder: readonly string[] | undefined,
+): LintDiagnostic[] {
+  if (expectedOrder === undefined || expectedOrder.length === 0) {
+    return [];
+  }
+
+  const orderByHeading = new Map(
+    expectedOrder.map((heading, index) => [heading, index]),
+  );
+  const observedHeadings = document.headings.filter((heading) =>
+    orderByHeading.has(heading.text),
+  );
+  let highestExpectedIndex = -1;
+
+  for (const heading of observedHeadings) {
+    const expectedIndex = orderByHeading.get(heading.text);
+
+    if (expectedIndex === undefined) {
+      continue;
+    }
+
+    if (expectedIndex < highestExpectedIndex) {
+      return [
+        {
+          severity: "error",
+          message: `Heading '${heading.text}' appears before a required earlier heading.`,
+          location: {
+            filePath,
+            line: heading.line,
+            column: heading.column,
+          },
+          section: {
+            title: heading.text,
+            line: heading.line,
+            level: heading.depth,
+          },
+          observedStructure: observedHeadings.map((item) => item.text).join(" -> "),
+          expectedStructures: [expectedOrder.join(" -> ")],
+        },
+      ];
+    }
+
+    highestExpectedIndex = expectedIndex;
+  }
+
+  return [];
 }
 
 function hasAdjacentParagraph(
