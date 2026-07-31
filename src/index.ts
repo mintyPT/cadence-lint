@@ -129,6 +129,21 @@ export interface IntroductionOptions {
   requireLastSentenceMarker?: readonly string[];
 }
 
+export interface WordingOptions {
+  enabled?: boolean;
+  bannedTerms?: readonly string[];
+  useDefaults?: boolean;
+}
+
+export const defaultVagueTerms = [
+  "improve",
+  "better",
+  "robust",
+  "clean up",
+  "various",
+  "some",
+] as const;
+
 export interface LintMarkdownOptions {
   filePath?: string;
   language?: string;
@@ -140,6 +155,7 @@ export interface LintMarkdownOptions {
   headingOrder?: readonly string[];
   title?: TitleOptions;
   introduction?: IntroductionOptions;
+  wording?: WordingOptions;
 }
 
 export interface LintResult {
@@ -178,6 +194,7 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
         language,
         protectedPatterns: options.protectedPatterns ?? [],
       }),
+      ...lintWording(markdown, filePath, options.wording),
     ],
   };
 }
@@ -612,6 +629,77 @@ function lintIntroduction(
 
 function structuresEqual(left: readonly number[], right: readonly number[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function lintWording(
+  markdown: string,
+  filePath: string,
+  options: WordingOptions | undefined,
+): LintDiagnostic[] {
+  if (options === undefined || options.enabled === false) {
+    return [];
+  }
+
+  const useDefaults = options.useDefaults ?? true;
+  const termsBySource = new Map<string, "default" | "custom">();
+
+  if (useDefaults) {
+    for (const term of defaultVagueTerms) {
+      termsBySource.set(term, "default");
+    }
+  }
+
+  for (const term of options.bannedTerms ?? []) {
+    const normalizedTerm = term.trim();
+
+    if (normalizedTerm.length > 0) {
+      termsBySource.set(normalizedTerm, "custom");
+    }
+  }
+
+  const uniqueTerms = [...termsBySource.keys()];
+
+  if (uniqueTerms.length === 0) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+  const lines = markdown.split(/\r?\n/);
+
+  lines.forEach((line, lineIndex) => {
+    for (const term of uniqueTerms) {
+      const source = termsBySource.get(term) ?? "custom";
+      const pattern = new RegExp(
+        `(?<![A-Za-z0-9])${escapeRegExp(term).replace(/\\ /g, "\\s+")}(?![A-Za-z0-9])`,
+        "gi",
+      );
+      let match: RegExpExecArray | null;
+
+      while ((match = pattern.exec(line)) !== null) {
+        diagnostics.push({
+          severity: "error",
+          message: `Wording uses banned ${source} term '${match[0]}'.`,
+          location: {
+            filePath,
+            line: lineIndex + 1,
+            column: match.index + 1,
+          },
+          observedStructure: match[0],
+          expectedStructures: [`avoid ${term}`],
+        });
+      }
+    }
+  });
+
+  return diagnostics.sort(
+    (left, right) =>
+      left.location.line - right.location.line ||
+      left.location.column - right.location.column,
+  );
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function findSubtitleParagraph(

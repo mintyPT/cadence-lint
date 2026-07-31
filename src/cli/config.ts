@@ -11,6 +11,7 @@ import {
   type SectionStructureSegment,
   type SectionStructurePattern,
   type TitleOptions,
+  type WordingOptions,
 } from "../index.js";
 
 export interface CadenceCliConfig {
@@ -22,6 +23,7 @@ export interface CadenceCliConfig {
   headingOrder?: readonly string[];
   title?: TitleOptions;
   introduction?: IntroductionOptions;
+  wording?: WordingOptions;
 }
 
 export async function loadCadenceConfig(options: {
@@ -62,6 +64,7 @@ export async function loadCadenceConfig(options: {
     ),
     ...withOptionalConfig("title", readTitle(parsed)),
     ...withOptionalConfig("introduction", readIntroduction(parsed)),
+    ...withOptionalConfig("wording", readWording(parsed)),
   };
 }
 
@@ -491,6 +494,40 @@ function readIntroduction(config: unknown): IntroductionOptions | undefined {
       readStringArray(
         config.introduction.requireLastSentenceMarker,
         "cadence-lint: config introduction.requireLastSentenceMarker must be an array of strings",
+      ),
+    ),
+  };
+}
+
+function readWording(config: unknown): WordingOptions | undefined {
+  if (!isRecord(config) || config.wording === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.wording)) {
+    throw new Error("cadence-lint: config wording must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "enabled",
+      readOptionalBoolean(
+        config.wording.enabled,
+        "cadence-lint: config wording.enabled must be a boolean",
+      ),
+    ),
+    ...withOptionalConfig(
+      "bannedTerms",
+      readStringArray(
+        config.wording.bannedTerms,
+        "cadence-lint: config wording.bannedTerms must be an array of strings",
+      ),
+    ),
+    ...withOptionalConfig(
+      "useDefaults",
+      readOptionalBoolean(
+        config.wording.useDefaults,
+        "cadence-lint: config wording.useDefaults must be a boolean",
       ),
     ),
   };

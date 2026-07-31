@@ -758,6 +758,100 @@ describe("lintMarkdown", () => {
     );
   });
 
+  it("uses default vague-word terms when wording is enabled without custom terms", () => {
+    const result = lintMarkdown("This can improve some parts.\n", {
+      wording: {},
+    });
+
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Wording uses banned default term 'improve'.",
+          location: {
+            filePath: "<input>",
+            line: 1,
+            column: 10,
+          },
+        }),
+        expect.objectContaining({
+          message: "Wording uses banned default term 'some'.",
+        }),
+      ]),
+    );
+  });
+
+  it("replaces default vague-word terms when useDefaults is false", () => {
+    const result = lintMarkdown("This can improve very rough prose.\n", {
+      wording: {
+        bannedTerms: ["very"],
+        useDefaults: false,
+      },
+    });
+
+    const wordingDiagnostics = result.diagnostics.filter((diagnostic) =>
+      diagnostic.message.startsWith("Wording uses banned"),
+    );
+
+    expect(wordingDiagnostics).toEqual([
+      expect.objectContaining({
+        message: "Wording uses banned custom term 'very'.",
+      }),
+    ]);
+  });
+
+  it("extends default vague-word terms with custom terms", () => {
+    const result = lintMarkdown("This can improve very rough prose.\n", {
+      wording: {
+        bannedTerms: ["very"],
+        useDefaults: true,
+      },
+    });
+
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Wording uses banned default term 'improve'.",
+        }),
+        expect.objectContaining({
+          message: "Wording uses banned custom term 'very'.",
+        }),
+      ]),
+    );
+  });
+
+  it("can disable vague-word checks", () => {
+    const result = lintMarkdown("This can improve some parts.\n", {
+      wording: {
+        enabled: false,
+      },
+    });
+
+    expect(
+      result.diagnostics.filter((diagnostic) =>
+        diagnostic.message.startsWith("Wording uses banned"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("matches multi-word banned terms deterministically", () => {
+    const result = lintMarkdown("We should clean up the draft.\n", {
+      wording: {},
+    });
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Wording uses banned default term 'clean up'.",
+        location: {
+          filePath: "<input>",
+          line: 1,
+          column: 11,
+        },
+        observedStructure: "clean up",
+        expectedStructures: ["avoid clean up"],
+      }),
+    );
+  });
+
   it("reports anchored expected structure details with placement on mismatches", () => {
     const markdown = [
       "<!-- cadence:overview -->",

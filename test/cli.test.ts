@@ -716,6 +716,41 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("loads wording rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "wording": {',
+        '    "bannedTerms": ["very", "clean up"],',
+        '    "useDefaults": false',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(filePath, "We should clean up this very short draft.\n");
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Wording uses banned custom term 'clean up'.",
+        }),
+        expect.objectContaining({
+          message: "Wording uses banned custom term 'very'.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
   it("loads described section structures from cadence.config.jsonc", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");
