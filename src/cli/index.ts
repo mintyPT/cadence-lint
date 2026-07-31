@@ -93,6 +93,7 @@ program.action(async (files: string[], options: CliOptions) => {
       wording: config.wording,
       lists: config.lists,
       transitions: config.transitions,
+      headings: config.headings,
     });
     diagnostics.push(...result.diagnostics);
   }

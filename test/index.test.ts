@@ -1058,6 +1058,86 @@ describe("lintMarkdown", () => {
     expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
   });
 
+  it("passes heading outlines with one H1 and ordered H2/H3 sections", () => {
+    const result = lintMarkdown(
+      [
+        "# Title",
+        "",
+        "## Argument",
+        "",
+        "### Evidence",
+      ].join("\n"),
+      {
+        headings: {
+          maxDepth: 3,
+          forbidSkippedLevels: true,
+          singleH1: true,
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("reports multiple H1 headings when singleH1 is true", () => {
+    const result = lintMarkdown("# First\n\n# Second\n", {
+      headings: {
+        singleH1: true,
+      },
+    });
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Document has multiple H1 headings.",
+        observedStructure: "H1 count 2",
+        expectedStructures: ["single H1"],
+      }),
+    );
+  });
+
+  it("reports headings deeper than the configured maximum depth", () => {
+    const result = lintMarkdown("#### Too Deep\n", {
+      headings: {
+        maxDepth: 3,
+      },
+    });
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Heading depth is 4; expected <= 3.",
+        observedStructure: "depth 4",
+        expectedStructures: ["depth <= 3"],
+      }),
+    );
+  });
+
+  it("reports skipped heading levels when forbidden", () => {
+    const result = lintMarkdown("# Title\n\n### Skipped\n", {
+      headings: {
+        forbidSkippedLevels: true,
+      },
+    });
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Heading level skips from H1 to H3.",
+        observedStructure: "H1 -> H3",
+        expectedStructures: ["no skipped heading levels"],
+      }),
+    );
+  });
+
+  it("does not report disabled heading hierarchy checks", () => {
+    const result = lintMarkdown("# First\n\n# Second\n\n#### Deep\n", {
+      headings: {
+        singleH1: false,
+        forbidSkippedLevels: false,
+      },
+    });
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
   it("reports anchored expected structure details with placement on mismatches", () => {
     const markdown = [
       "<!-- cadence:overview -->",

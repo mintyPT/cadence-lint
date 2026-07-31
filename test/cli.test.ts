@@ -840,6 +840,45 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("loads heading hierarchy rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "headings": {',
+        '    "maxDepth": 2,',
+        '    "forbidSkippedLevels": true,',
+        '    "singleH1": true',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(filePath, "# First\n\n# Second\n\n#### Too Deep\n");
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Document has multiple H1 headings.",
+        }),
+        expect.objectContaining({
+          message: "Heading depth is 4; expected <= 2.",
+        }),
+        expect.objectContaining({
+          message: "Heading level skips from H1 to H4.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
   it("loads described section structures from cadence.config.jsonc", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");

@@ -149,6 +149,12 @@ export interface TransitionsOptions {
   caseSensitive?: boolean;
 }
 
+export interface HeadingsOptions {
+  maxDepth?: number;
+  forbidSkippedLevels?: boolean;
+  singleH1?: boolean;
+}
+
 export const defaultVagueTerms = [
   "improve",
   "better",
@@ -172,6 +178,7 @@ export interface LintMarkdownOptions {
   wording?: WordingOptions;
   lists?: ListsOptions;
   transitions?: TransitionsOptions;
+  headings?: HeadingsOptions;
 }
 
 export interface LintResult {
@@ -216,6 +223,7 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
         language,
         protectedPatterns: options.protectedPatterns ?? [],
       }),
+      ...lintHeadings(document, filePath, options.headings),
     ],
   };
 }
@@ -864,6 +872,89 @@ function lintTransitions(
   }
 
   return diagnostics;
+}
+
+function lintHeadings(
+  document: MarkdownDocument,
+  filePath: string,
+  options: HeadingsOptions | undefined,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+  let h1Count = 0;
+  let previousDepth: number | undefined;
+
+  for (const heading of document.headings) {
+    if (heading.depth === 1) {
+      h1Count += 1;
+
+      if (options.singleH1 === true && h1Count > 1) {
+        diagnostics.push(headingDiagnostic(
+          filePath,
+          heading,
+          "Document has multiple H1 headings.",
+          `H1 count ${h1Count}`,
+          "single H1",
+        ));
+      }
+    }
+
+    if (options.maxDepth !== undefined && heading.depth > options.maxDepth) {
+      diagnostics.push(headingDiagnostic(
+        filePath,
+        heading,
+        `Heading depth is ${heading.depth}; expected <= ${options.maxDepth}.`,
+        `depth ${heading.depth}`,
+        `depth <= ${options.maxDepth}`,
+      ));
+    }
+
+    if (
+      options.forbidSkippedLevels === true &&
+      previousDepth !== undefined &&
+      heading.depth > previousDepth + 1
+    ) {
+      diagnostics.push(headingDiagnostic(
+        filePath,
+        heading,
+        `Heading level skips from H${previousDepth} to H${heading.depth}.`,
+        `H${previousDepth} -> H${heading.depth}`,
+        "no skipped heading levels",
+      ));
+    }
+
+    previousDepth = heading.depth;
+  }
+
+  return diagnostics;
+}
+
+function headingDiagnostic(
+  filePath: string,
+  heading: MarkdownDocument["headings"][number],
+  message: string,
+  observed: string,
+  expected: string,
+): LintDiagnostic {
+  return {
+    severity: "error",
+    message,
+    location: {
+      filePath,
+      line: heading.line,
+      column: heading.column,
+    },
+    section: {
+      title: heading.text,
+      line: heading.line,
+      level: heading.depth,
+    },
+    observedStructure: observed,
+    expectedStructures: [expected],
+  };
 }
 
 function escapeRegExp(value: string): string {

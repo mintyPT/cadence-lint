@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   parseStructurePattern,
+  type HeadingsOptions,
   type IntroductionOptions,
   type ListBalanceOptions,
   type ListsOptions,
@@ -28,6 +29,7 @@ export interface CadenceCliConfig {
   wording?: WordingOptions;
   lists?: ListsOptions;
   transitions?: TransitionsOptions;
+  headings?: HeadingsOptions;
 }
 
 export async function loadCadenceConfig(options: {
@@ -71,6 +73,7 @@ export async function loadCadenceConfig(options: {
     ...withOptionalConfig("wording", readWording(parsed)),
     ...withOptionalConfig("lists", readLists(parsed)),
     ...withOptionalConfig("transitions", readTransitions(parsed)),
+    ...withOptionalConfig("headings", readHeadings(parsed)),
   };
 }
 
@@ -621,6 +624,40 @@ function readTransitions(config: unknown): TransitionsOptions | undefined {
       readOptionalBoolean(
         config.transitions.caseSensitive,
         "cadence-lint: config transitions.caseSensitive must be a boolean",
+      ),
+    ),
+  };
+}
+
+function readHeadings(config: unknown): HeadingsOptions | undefined {
+  if (!isRecord(config) || config.headings === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.headings)) {
+    throw new Error("cadence-lint: config headings must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "maxDepth",
+      readOptionalPositiveInteger(
+        config.headings.maxDepth,
+        "cadence-lint: config headings.maxDepth must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "forbidSkippedLevels",
+      readOptionalBoolean(
+        config.headings.forbidSkippedLevels,
+        "cadence-lint: config headings.forbidSkippedLevels must be a boolean",
+      ),
+    ),
+    ...withOptionalConfig(
+      "singleH1",
+      readOptionalBoolean(
+        config.headings.singleH1,
+        "cadence-lint: config headings.singleH1 must be a boolean",
       ),
     ),
   };
