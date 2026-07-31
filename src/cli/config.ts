@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   parseStructurePattern,
+  type ListBalanceOptions,
   type SectionBalanceOptions,
   type SectionStructure,
   type SectionRule,
@@ -15,6 +16,7 @@ export interface CadenceCliConfig {
   sectionRules: SectionStructureRules;
   protectedPatterns: readonly RegExp[];
   sectionBalance?: SectionBalanceOptions;
+  listBalance?: ListBalanceOptions;
 }
 
 export async function loadCadenceConfig(options: {
@@ -45,6 +47,7 @@ export async function loadCadenceConfig(options: {
     sectionRules: readSectionRules(parsed),
     protectedPatterns: readProtectedPatterns(parsed),
     ...withOptionalConfig("sectionBalance", readSectionBalance(parsed)),
+    ...withOptionalConfig("listBalance", readListBalance(parsed)),
   };
 }
 
@@ -337,6 +340,70 @@ function readSectionBalance(config: unknown): SectionBalanceOptions | undefined 
       ),
     ),
   };
+}
+
+function readListBalance(config: unknown): ListBalanceOptions | undefined {
+  if (!isRecord(config) || config.listBalance === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.listBalance)) {
+    throw new Error("cadence-lint: config listBalance must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "maxConsecutiveLists",
+      readOptionalPositiveInteger(
+        config.listBalance.maxConsecutiveLists,
+        "cadence-lint: config listBalance.maxConsecutiveLists must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "requireParagraphBeforeList",
+      readOptionalBoolean(
+        config.listBalance.requireParagraphBeforeList,
+        "cadence-lint: config listBalance.requireParagraphBeforeList must be a boolean",
+      ),
+    ),
+    ...withOptionalConfig(
+      "requireParagraphAfterList",
+      readOptionalBoolean(
+        config.listBalance.requireParagraphAfterList,
+        "cadence-lint: config listBalance.requireParagraphAfterList must be a boolean",
+      ),
+    ),
+  };
+}
+
+function readOptionalPositiveInteger(
+  value: unknown,
+  errorMessage: string,
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(errorMessage);
+  }
+
+  return value;
+}
+
+function readOptionalBoolean(
+  value: unknown,
+  errorMessage: string,
+): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "boolean") {
+    throw new Error(errorMessage);
+  }
+
+  return value;
 }
 
 function readStringArray(

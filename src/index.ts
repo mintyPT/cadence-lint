@@ -106,6 +106,12 @@ export interface SectionBalanceOptions {
   ignoreHeadings?: readonly string[];
 }
 
+export interface ListBalanceOptions {
+  maxConsecutiveLists?: number;
+  requireParagraphBeforeList?: boolean;
+  requireParagraphAfterList?: boolean;
+}
+
 export interface LintMarkdownOptions {
   filePath?: string;
   language?: string;
@@ -113,6 +119,7 @@ export interface LintMarkdownOptions {
   sectionRules?: SectionStructureRules;
   protectedPatterns?: readonly RegExp[];
   sectionBalance?: SectionBalanceOptions;
+  listBalance?: ListBalanceOptions;
 }
 
 export interface LintResult {
@@ -144,6 +151,7 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
         language,
         protectedPatterns: options.protectedPatterns ?? [],
       }),
+      ...lintListBalance(document, filePath, options.listBalance),
     ],
   };
 }
@@ -299,6 +307,89 @@ function lintSectionBalance(
       ],
     },
   ];
+}
+
+function lintListBalance(
+  document: MarkdownDocument,
+  filePath: string,
+  options: ListBalanceOptions | undefined,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+  const blockGroups = document.sections.length > 0
+    ? document.sections.map((section) => section.blocks)
+    : [document.blocks];
+
+  for (const blocks of blockGroups) {
+    let consecutiveLists = 0;
+
+    blocks.forEach((block, index) => {
+      if (block.type !== "list") {
+        consecutiveLists = 0;
+        return;
+      }
+
+      consecutiveLists += 1;
+
+      if (
+        options.maxConsecutiveLists !== undefined &&
+        consecutiveLists > options.maxConsecutiveLists
+      ) {
+        diagnostics.push({
+          severity: "error",
+          message: `List balance allows at most ${options.maxConsecutiveLists} consecutive list${options.maxConsecutiveLists === 1 ? "" : "s"}.`,
+          location: {
+            filePath,
+            line: block.line,
+            column: block.column,
+          },
+          observedStructure: `${consecutiveLists} consecutive lists`,
+          expectedStructures: [
+            `consecutive lists <= ${options.maxConsecutiveLists}`,
+          ],
+        });
+      }
+
+      if (options.requireParagraphBeforeList === true && !hasAdjacentParagraph(blocks, index, -1)) {
+        diagnostics.push({
+          severity: "error",
+          message: "List balance requires a prose paragraph before each list.",
+          location: {
+            filePath,
+            line: block.line,
+            column: block.column,
+          },
+        });
+      }
+
+      if (options.requireParagraphAfterList === true && !hasAdjacentParagraph(blocks, index, 1)) {
+        diagnostics.push({
+          severity: "error",
+          message: "List balance requires a prose paragraph after each list.",
+          location: {
+            filePath,
+            line: block.line,
+            column: block.column,
+          },
+        });
+      }
+    });
+  }
+
+  return diagnostics;
+}
+
+function hasAdjacentParagraph(
+  blocks: readonly MarkdownDocument["blocks"][number][],
+  index: number,
+  direction: -1 | 1,
+): boolean {
+  const adjacent = blocks[index + direction];
+
+  return adjacent?.type === "paragraph";
 }
 
 function measureSection(

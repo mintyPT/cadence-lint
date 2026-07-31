@@ -380,6 +380,111 @@ describe("lintMarkdown", () => {
     ).toEqual([]);
   });
 
+  it("passes lists with required surrounding prose", () => {
+    const markdown = [
+      "## Body",
+      "",
+      "Before the list.",
+      "",
+      "- One item",
+      "- Two item",
+      "",
+      "After the list.",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        listBalance: {
+          maxConsecutiveLists: 1,
+          requireParagraphBeforeList: true,
+          requireParagraphAfterList: true,
+        },
+      }).diagnostics.filter((diagnostic) => diagnostic.severity === "error"),
+    ).toEqual([]);
+  });
+
+  it("reports consecutive lists that exceed the configured list balance", () => {
+    const markdown = [
+      "- One item",
+      "",
+      "1. Another item",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        listBalance: {
+          maxConsecutiveLists: 1,
+        },
+      }).diagnostics,
+    ).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        message: "List balance allows at most 1 consecutive list.",
+        location: {
+          filePath: "<input>",
+          line: 3,
+          column: 1,
+        },
+        observedStructure: "2 consecutive lists",
+        expectedStructures: ["consecutive lists <= 1"],
+      }),
+    );
+  });
+
+  it("reports lists that start a section when prose is required before lists", () => {
+    const markdown = [
+      "## Body",
+      "",
+      "- One item",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        listBalance: {
+          requireParagraphBeforeList: true,
+        },
+      }).diagnostics,
+    ).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        message: "List balance requires a prose paragraph before each list.",
+        location: {
+          filePath: "<input>",
+          line: 3,
+          column: 1,
+        },
+      }),
+    );
+  });
+
+  it("reports lists that end a section when prose is required after lists", () => {
+    const markdown = [
+      "## Body",
+      "",
+      "Before the list.",
+      "",
+      "- One item",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        listBalance: {
+          requireParagraphAfterList: true,
+        },
+      }).diagnostics,
+    ).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        message: "List balance requires a prose paragraph after each list.",
+        location: {
+          filePath: "<input>",
+          line: 5,
+          column: 1,
+        },
+      }),
+    );
+  });
+
   it("reports anchored expected structure details with placement on mismatches", () => {
     const markdown = [
       "<!-- cadence:overview -->",

@@ -86,6 +86,7 @@ program.action(async (files: string[], options: CliOptions) => {
       protectedPatterns: config.protectedPatterns,
       sectionRules,
       sectionBalance: config.sectionBalance,
+      listBalance: config.listBalance,
     });
     diagnostics.push(...result.diagnostics);
   }

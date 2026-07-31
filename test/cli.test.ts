@@ -532,6 +532,54 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("loads list balance rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "listBalance": {',
+        '    "maxConsecutiveLists": 1,',
+        '    "requireParagraphBeforeList": true,',
+        '    "requireParagraphAfterList": true',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Body",
+        "",
+        "- First list",
+        "",
+        "1. Second list",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "List balance requires a prose paragraph before each list.",
+        }),
+        expect.objectContaining({
+          message: "List balance allows at most 1 consecutive list.",
+        }),
+        expect.objectContaining({
+          message: "List balance requires a prose paragraph after each list.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
   it("loads described section structures from cadence.config.jsonc", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");
