@@ -948,6 +948,116 @@ describe("lintMarkdown", () => {
     );
   });
 
+  it("passes selected sections whose first sentence starts with an allowed transition", () => {
+    const result = lintMarkdown(
+      [
+        "## Argument",
+        "",
+        "However, the evidence changes the point.",
+      ].join("\n"),
+      {
+        transitions: {
+          requiredAtHeadingLevels: [2],
+          allowedStarts: ["However"],
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("reports selected heading levels whose first sentence lacks an allowed transition", () => {
+    const result = lintMarkdown(
+      [
+        "## Argument",
+        "",
+        "The evidence changes the point.",
+      ].join("\n"),
+      {
+        filePath: "essay.md",
+        transitions: {
+          requiredAtHeadingLevels: [2],
+          allowedStarts: ["However", "By contrast"],
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Section 'Argument' first sentence does not start with an allowed transition.",
+        location: {
+          filePath: "essay.md",
+          line: 1,
+          column: 1,
+        },
+        observedStructure: "The evidence changes the point.",
+        expectedStructures: ["However", "By contrast"],
+      }),
+    );
+  });
+
+  it("ignores non-selected heading levels in transition checks", () => {
+    const result = lintMarkdown(
+      [
+        "### Detail",
+        "",
+        "The evidence changes the point.",
+      ].join("\n"),
+      {
+        transitions: {
+          requiredAtHeadingLevels: [2],
+          allowedStarts: ["However"],
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("can target transition checks by heading name", () => {
+    const result = lintMarkdown(
+      [
+        "### Takeaway",
+        "",
+        "The evidence changes the point.",
+      ].join("\n"),
+      {
+        transitions: {
+          requiredAtHeadings: ["Takeaway"],
+          allowedStarts: ["Finally"],
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        section: {
+          title: "Takeaway",
+          line: 1,
+          level: 3,
+        },
+      }),
+    );
+  });
+
+  it("handles transition starts case-insensitively by default", () => {
+    const result = lintMarkdown(
+      [
+        "## Argument",
+        "",
+        "however, the evidence changes the point.",
+      ].join("\n"),
+      {
+        transitions: {
+          requiredAtHeadingLevels: [2],
+          allowedStarts: ["However"],
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
   it("reports anchored expected structure details with placement on mismatches", () => {
     const markdown = [
       "<!-- cadence:overview -->",

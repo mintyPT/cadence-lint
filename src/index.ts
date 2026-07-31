@@ -142,6 +142,13 @@ export interface ListsOptions {
   allowedPrefixes?: readonly string[];
 }
 
+export interface TransitionsOptions {
+  requiredAtHeadingLevels?: readonly number[];
+  requiredAtHeadings?: readonly string[];
+  allowedStarts: readonly string[];
+  caseSensitive?: boolean;
+}
+
 export const defaultVagueTerms = [
   "improve",
   "better",
@@ -164,6 +171,7 @@ export interface LintMarkdownOptions {
   introduction?: IntroductionOptions;
   wording?: WordingOptions;
   lists?: ListsOptions;
+  transitions?: TransitionsOptions;
 }
 
 export interface LintResult {
@@ -204,6 +212,10 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
       }),
       ...lintWording(markdown, filePath, options.wording),
       ...lintLists(document, filePath, options.lists),
+      ...lintTransitions(document, filePath, options.transitions, {
+        language,
+        protectedPatterns: options.protectedPatterns ?? [],
+      }),
     ],
   };
 }
@@ -786,6 +798,69 @@ function lintLists(
         });
       }
     }
+  }
+
+  return diagnostics;
+}
+
+function lintTransitions(
+  document: MarkdownDocument,
+  filePath: string,
+  options: TransitionsOptions | undefined,
+  sentenceOptions: { language: string; protectedPatterns: readonly RegExp[] },
+): LintDiagnostic[] {
+  if (options === undefined || options.allowedStarts.length === 0) {
+    return [];
+  }
+
+  const requiredLevels = new Set(options.requiredAtHeadingLevels ?? []);
+  const requiredHeadings = new Set(options.requiredAtHeadings ?? []);
+  const caseSensitive = options.caseSensitive ?? false;
+  const allowedStarts = caseSensitive
+    ? options.allowedStarts
+    : options.allowedStarts.map((start) => start.toLocaleLowerCase());
+  const diagnostics: LintDiagnostic[] = [];
+
+  for (const section of document.sections) {
+    const selected =
+      requiredLevels.has(section.heading.depth) ||
+      requiredHeadings.has(section.heading.text);
+
+    if (!selected) {
+      continue;
+    }
+
+    const firstParagraph = section.paragraphs[0];
+    const firstSentence = firstParagraph === undefined
+      ? undefined
+      : analyzeParagraphStructure(firstParagraph, sentenceOptions).sentences[0];
+    const comparableSentence = caseSensitive
+      ? firstSentence
+      : firstSentence?.toLocaleLowerCase();
+
+    if (
+      comparableSentence !== undefined &&
+      allowedStarts.some((start) => comparableSentence.startsWith(start))
+    ) {
+      continue;
+    }
+
+    diagnostics.push({
+      severity: "error",
+      message: `Section '${section.heading.text}' first sentence does not start with an allowed transition.`,
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: firstSentence ?? "",
+      expectedStructures: options.allowedStarts,
+    });
   }
 
   return diagnostics;

@@ -12,6 +12,7 @@ import {
   type SectionStructureSegment,
   type SectionStructurePattern,
   type TitleOptions,
+  type TransitionsOptions,
   type WordingOptions,
 } from "../index.js";
 
@@ -26,6 +27,7 @@ export interface CadenceCliConfig {
   introduction?: IntroductionOptions;
   wording?: WordingOptions;
   lists?: ListsOptions;
+  transitions?: TransitionsOptions;
 }
 
 export async function loadCadenceConfig(options: {
@@ -68,6 +70,7 @@ export async function loadCadenceConfig(options: {
     ...withOptionalConfig("introduction", readIntroduction(parsed)),
     ...withOptionalConfig("wording", readWording(parsed)),
     ...withOptionalConfig("lists", readLists(parsed)),
+    ...withOptionalConfig("transitions", readTransitions(parsed)),
   };
 }
 
@@ -575,6 +578,72 @@ function readLists(config: unknown): ListsOptions | undefined {
       ),
     ),
   };
+}
+
+function readTransitions(config: unknown): TransitionsOptions | undefined {
+  if (!isRecord(config) || config.transitions === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.transitions)) {
+    throw new Error("cadence-lint: config transitions must be an object");
+  }
+
+  const allowedStarts = readStringArray(
+    config.transitions.allowedStarts,
+    "cadence-lint: config transitions.allowedStarts must be an array of strings",
+  );
+
+  if (allowedStarts === undefined || allowedStarts.length === 0) {
+    throw new Error(
+      "cadence-lint: config transitions.allowedStarts must define at least one string",
+    );
+  }
+
+  return {
+    allowedStarts,
+    ...withOptionalConfig(
+      "requiredAtHeadingLevels",
+      readOptionalPositiveIntegerArray(
+        config.transitions.requiredAtHeadingLevels,
+        "cadence-lint: config transitions.requiredAtHeadingLevels must be an array of positive integers",
+      ),
+    ),
+    ...withOptionalConfig(
+      "requiredAtHeadings",
+      readStringArray(
+        config.transitions.requiredAtHeadings,
+        "cadence-lint: config transitions.requiredAtHeadings must be an array of strings",
+      ),
+    ),
+    ...withOptionalConfig(
+      "caseSensitive",
+      readOptionalBoolean(
+        config.transitions.caseSensitive,
+        "cadence-lint: config transitions.caseSensitive must be a boolean",
+      ),
+    ),
+  };
+}
+
+function readOptionalPositiveIntegerArray(
+  value: unknown,
+  errorMessage: string,
+): readonly number[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (
+    !Array.isArray(value) ||
+    value.some(
+      (item) => typeof item !== "number" || !Number.isInteger(item) || item <= 0,
+    )
+  ) {
+    throw new Error(errorMessage);
+  }
+
+  return value;
 }
 
 function readOptionalPositiveInteger(

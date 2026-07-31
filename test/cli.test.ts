@@ -801,6 +801,45 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("loads transition rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "transitions": {',
+        '    "requiredAtHeadingLevels": [2],',
+        '    "allowedStarts": ["However", "Finally"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Argument",
+        "",
+        "The point starts abruptly.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Section 'Argument' first sentence does not start with an allowed transition.",
+        observedStructure: "The point starts abruptly.",
+        expectedStructures: ["However", "Finally"],
+      }),
+    );
+  }, cliTestTimeout);
+
   it("loads described section structures from cadence.config.jsonc", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");
