@@ -1,0 +1,9 @@
+{
+  "headingSections": {
+    "main-argument": ["1/1"]
+  },
+  "wording": {
+    "bannedTerms": ["things"],
+    "useDefaults": true
+  }
+}
