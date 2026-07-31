@@ -85,6 +85,18 @@ program.action(async (files: string[], options: CliOptions) => {
       language,
       protectedPatterns: config.protectedPatterns,
       sectionRules,
+      headingSectionRules: config.headingSectionRules,
+      sectionBalance: config.sectionBalance,
+      listBalance: config.listBalance,
+      headingOrder: config.headingOrder,
+      requiredHeadings: config.requiredHeadings,
+      title: config.title,
+      introduction: config.introduction,
+      wording: config.wording,
+      lists: config.lists,
+      transitions: config.transitions,
+      headings: config.headings,
+      sectionLength: config.sectionLength,
     });
     diagnostics.push(...result.diagnostics);
   }

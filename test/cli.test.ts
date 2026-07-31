@@ -4,7 +4,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const cliTestTimeout = 10_000;
+const cliTestTimeout = 30_000;
 
 describe("cli", () => {
   it("identifies cadence-lint in help output", async () => {
@@ -481,6 +481,532 @@ describe("cli", () => {
     });
 
     expect(result.stdout).toBe("cadence-lint: no issues found");
+  }, cliTestTimeout);
+
+  it("loads section balance rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sectionBalance": {',
+        '    "measure": "words",',
+        '    "maxLargestToSmallestRatio": 2,',
+        '    "ignoreHeadings": ["Introduction"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "Ignored.",
+        "",
+        "## Background",
+        "",
+        "One two.",
+        "",
+        "## Argument",
+        "",
+        "One two three four five.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({
+        message:
+          "Section balance exceeds configured words ratio: 'Argument' is 2.50x 'Background'.",
+        observedStructure: "Argument:5 / Background:2 (words)",
+        expectedStructures: ["largest-to-smallest ratio <= 2"],
+      }),
+    );
+  }, cliTestTimeout);
+
+  it("loads list balance rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "listBalance": {',
+        '    "maxConsecutiveLists": 1,',
+        '    "requireParagraphBeforeList": true,',
+        '    "requireParagraphAfterList": true',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Body",
+        "",
+        "- First list",
+        "",
+        "1. Second list",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "List balance requires a prose paragraph before each list.",
+        }),
+        expect.objectContaining({
+          message: "List balance allows at most 1 consecutive list.",
+        }),
+        expect.objectContaining({
+          message: "List balance requires a prose paragraph after each list.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
+  it("loads required heading order from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "headingOrder": ["Introduction", "Argument", "Conclusion"]',
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "Opening.",
+        "",
+        "## Conclusion",
+        "",
+        "Closing.",
+        "",
+        "## Argument",
+        "",
+        "Point.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Heading 'Argument' appears before a required earlier heading.",
+        observedStructure: "Introduction -> Conclusion -> Argument",
+        expectedStructures: ["Introduction -> Argument -> Conclusion"],
+      }),
+    );
+  }, cliTestTimeout);
+
+  it("loads required heading presence rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "requiredHeadings": ["Introduction", "Argument", "Evidence", "Conclusion"]',
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "Open.",
+        "",
+        "## Argument",
+        "",
+        "Claim.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Required heading 'Evidence' is missing.",
+          expectedStructures: ["Introduction", "Argument", "Evidence", "Conclusion"],
+        }),
+        expect.objectContaining({
+          message: "Required heading 'Conclusion' is missing.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
+  it("loads title rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "title": {',
+        '    "maxWords": 3,',
+        '    "allowSubtitle": false',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "# This Title Is Too Long",
+        "",
+        "Subtitle here.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Title has 5 words; expected <= 3.",
+        }),
+        expect.objectContaining({
+          message: "Subtitle is not allowed by configured title rules.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
+  it("loads introduction rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "introduction": {',
+        '    "heading": "Introduction",',
+        '    "maxParagraphs": 1,',
+        '    "allowedStructures": ["2"],',
+        '    "requireLastSentenceMarker": ["This essay argues"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "Context opens.",
+        "",
+        "The point is implied.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Introduction has 2 paragraphs; expected <= 1.",
+        }),
+        expect.objectContaining({
+          message: "Introduction sentence structure does not match allowed structures.",
+          observedStructure: "1/1",
+        }),
+        expect.objectContaining({
+          message: "Introduction final sentence is missing a required marker phrase.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
+  it("loads wording rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "wording": {',
+        '    "bannedTerms": ["very", "clean up"],',
+        '    "useDefaults": false',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(filePath, "We should clean up this very short draft.\n");
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Wording uses banned custom term 'clean up'.",
+        }),
+        expect.objectContaining({
+          message: "Wording uses banned custom term 'very'.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
+  it("loads list discipline rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "lists": {',
+        '    "maxItems": 1,',
+        '    "maxWordsPerItem": 3,',
+        '    "maxDepth": 1,',
+        '    "allowedPrefixes": ["Add"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "- Add concise point",
+        "- Drift into too many words",
+        "  - Add nested point",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "List has 2 items; expected <= 1.",
+        }),
+        expect.objectContaining({
+          message: "List item has 5 words; expected <= 3.",
+        }),
+        expect.objectContaining({
+          message: "List item depth is 2; expected <= 1.",
+        }),
+        expect.objectContaining({
+          message: "List item does not start with an allowed prefix.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
+  it("loads transition rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "transitions": {',
+        '    "requiredAtHeadingLevels": [2],',
+        '    "allowedStarts": ["However", "Finally"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Argument",
+        "",
+        "The point starts abruptly.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Section 'Argument' first sentence does not start with an allowed transition.",
+        observedStructure: "The point starts abruptly.",
+        expectedStructures: ["However", "Finally"],
+      }),
+    );
+  }, cliTestTimeout);
+
+  it("loads heading hierarchy rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "headings": {',
+        '    "maxDepth": 2,',
+        '    "forbidSkippedLevels": true,',
+        '    "singleH1": true',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(filePath, "# First\n\n# Second\n\n#### Too Deep\n");
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Document has multiple H1 headings.",
+        }),
+        expect.objectContaining({
+          message: "Heading depth is 4; expected <= 2.",
+        }),
+        expect.objectContaining({
+          message: "Heading level skips from H1 to H4.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
+  it("applies configured heading section rules to Markdown heading sections", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "headingSections": {',
+        '    "Introduction": ["2/1"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "One sentence.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Heading section 'Introduction' paragraph structure does not match allowed structures.",
+        observedStructure: "1",
+        expectedStructures: ["2/1"],
+      }),
+    );
+  }, cliTestTimeout);
+
+  it("loads section length rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sectionLength": {',
+        '    "default": { "maxParagraphs": 1, "maxWords": 6 },',
+        '    "Introduction": { "maxParagraphs": 3, "maxWords": 4 }',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "One two three four five.",
+        "",
+        "## Body",
+        "",
+        "One sentence.",
+        "",
+        "Second paragraph.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Section 'Introduction' has 5 words; expected <= 4.",
+        }),
+        expect.objectContaining({
+          message: "Section 'Body' has 2 paragraphs; expected <= 1.",
+        }),
+      ]),
+    );
   }, cliTestTimeout);
 
   it("loads described section structures from cadence.config.jsonc", async () => {

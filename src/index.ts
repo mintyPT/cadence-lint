@@ -22,10 +22,15 @@ export { parseStructurePattern } from "./structure-patterns.js";
 export {
   parseMarkdownDocument,
   type MarkdownBlock,
+  type MarkdownContentBlock,
   type MarkdownDocument,
+  type MarkdownHeadingBlock,
   type MarkdownHtmlCommentBlock,
+  type MarkdownListBlock,
+  type MarkdownListItem,
   type MarkdownParagraph,
   type MarkdownParagraphBlock,
+  type MarkdownSection,
 } from "./markdown-document.js";
 export {
   findParagraphsOutsideCadenceMarkers,
@@ -53,7 +58,10 @@ import type {
 } from "./diagnostics.js";
 import {
   parseMarkdownDocument,
+  type MarkdownContentBlock,
+  type MarkdownDocument,
   type MarkdownParagraph,
+  type MarkdownSection,
 } from "./markdown-document.js";
 import {
   findParagraphsOutsideCadenceMarkers,
@@ -92,12 +100,102 @@ export type SectionStructureRule =
   | SectionRule;
 export type SectionStructureRules = Record<string, SectionStructureRule>;
 
+export type SectionBalanceMeasure = "words" | "sentences" | "paragraphs";
+
+export interface SectionBalanceOptions {
+  measure: SectionBalanceMeasure;
+  maxLargestToSmallestRatio: number;
+  ignoreHeadings?: readonly string[];
+}
+
+export interface ListBalanceOptions {
+  maxConsecutiveLists?: number;
+  requireParagraphBeforeList?: boolean;
+  requireParagraphAfterList?: boolean;
+}
+
+export interface TitleOptions {
+  minWords?: number;
+  maxWords?: number;
+  minCharacters?: number;
+  maxCharacters?: number;
+  allowSubtitle?: boolean;
+  maxSubtitleWords?: number;
+  maxSubtitleCharacters?: number;
+}
+
+export interface IntroductionOptions {
+  heading?: string;
+  maxParagraphs?: number;
+  allowedStructures?: readonly SectionStructurePattern[];
+  requireLastSentenceMarker?: readonly string[];
+}
+
+export interface WordingOptions {
+  enabled?: boolean;
+  bannedTerms?: readonly string[];
+  useDefaults?: boolean;
+}
+
+export interface ListsOptions {
+  maxItems?: number;
+  maxWordsPerItem?: number;
+  maxDepth?: number;
+  allowedPrefixes?: readonly string[];
+}
+
+export interface TransitionsOptions {
+  requiredAtHeadingLevels?: readonly number[];
+  requiredAtHeadings?: readonly string[];
+  allowedStarts: readonly string[];
+  caseSensitive?: boolean;
+}
+
+export interface HeadingsOptions {
+  maxDepth?: number;
+  forbidSkippedLevels?: boolean;
+  singleH1?: boolean;
+}
+
+export interface SectionLengthLimit {
+  maxParagraphs?: number;
+  maxWords?: number;
+  maxSentences?: number;
+  maxListItems?: number;
+}
+
+export interface SectionLengthOptions {
+  default?: SectionLengthLimit;
+  [heading: string]: SectionLengthLimit | undefined;
+}
+
+export const defaultVagueTerms = [
+  "improve",
+  "better",
+  "robust",
+  "clean up",
+  "various",
+  "some",
+] as const;
+
 export interface LintMarkdownOptions {
   filePath?: string;
   language?: string;
   allowedSectionNames?: readonly string[];
   sectionRules?: SectionStructureRules;
+  headingSectionRules?: SectionStructureRules;
   protectedPatterns?: readonly RegExp[];
+  sectionBalance?: SectionBalanceOptions;
+  listBalance?: ListBalanceOptions;
+  headingOrder?: readonly string[];
+  requiredHeadings?: readonly string[];
+  title?: TitleOptions;
+  introduction?: IntroductionOptions;
+  wording?: WordingOptions;
+  lists?: ListsOptions;
+  transitions?: TransitionsOptions;
+  headings?: HeadingsOptions;
+  sectionLength?: SectionLengthOptions;
 }
 
 export interface LintResult {
@@ -112,6 +210,11 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
     (options.sectionRules === undefined ? undefined : Object.keys(options.sectionRules));
   const language = options.language ?? "en";
   validateSentenceLanguage(language);
+  const sentenceOptions = {
+    language,
+    protectedPatterns: options.protectedPatterns ?? [],
+  };
+  const analyzeParagraph = createParagraphAnalyzer(sentenceOptions);
   const diagnostics = validateCadenceMarkers(document, {
     filePath,
     allowedSectionNames,
@@ -121,10 +224,39 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
     diagnostics: [
       ...diagnostics,
       ...lintCadenceMarkerCoverage(document, filePath),
-      ...lintMarkedSectionStructures(document, filePath, options.sectionRules ?? {}, {
-        language,
-        protectedPatterns: options.protectedPatterns ?? [],
-      }),
+      ...lintMarkedSectionStructures(
+        document,
+        filePath,
+        options.sectionRules ?? {},
+        analyzeParagraph,
+      ),
+      ...lintHeadingSectionStructures(
+        document,
+        filePath,
+        options.headingSectionRules ?? {},
+        analyzeParagraph,
+      ),
+      ...lintSectionBalance(
+        document,
+        filePath,
+        options.sectionBalance,
+        analyzeParagraph,
+      ),
+      ...lintListBalance(document, filePath, options.listBalance),
+      ...lintHeadingOrder(document, filePath, options.headingOrder),
+      ...lintRequiredHeadings(document, filePath, options.requiredHeadings),
+      ...lintTitle(document, filePath, options.title),
+      ...lintIntroduction(document, filePath, options.introduction, analyzeParagraph),
+      ...lintWording(document, filePath, options.wording),
+      ...lintLists(document, filePath, options.lists),
+      ...lintTransitions(document, filePath, options.transitions, analyzeParagraph),
+      ...lintHeadings(document, filePath, options.headings),
+      ...lintSectionLength(
+        document,
+        filePath,
+        options.sectionLength,
+        analyzeParagraph,
+      ),
     ],
   };
 }
@@ -148,7 +280,7 @@ function lintMarkedSectionStructures(
   document: ReturnType<typeof parseMarkdownDocument>,
   filePath: string,
   sectionRules: SectionStructureRules,
-  options: { language: string; protectedPatterns: readonly RegExp[] },
+  analyzeParagraph: ParagraphAnalyzer,
 ): LintDiagnostic[] {
   const diagnostics: LintDiagnostic[] = [];
 
@@ -159,9 +291,7 @@ function lintMarkedSectionStructures(
       continue;
     }
 
-    const paragraphAnalyses = section.paragraphs.map((paragraph) =>
-      analyzeParagraphStructure(paragraph, options),
-    );
+    const paragraphAnalyses = section.paragraphs.map(analyzeParagraph);
     const observedStructure = paragraphAnalyses.map(
       (analysis) => analysis.sentenceCount,
     );
@@ -223,6 +353,955 @@ function lintMarkedSectionStructures(
   }
 
   return diagnostics;
+}
+
+function lintHeadingSectionStructures(
+  document: MarkdownDocument,
+  filePath: string,
+  sectionRules: SectionStructureRules,
+  analyzeParagraph: ParagraphAnalyzer,
+): LintDiagnostic[] {
+  const diagnostics: LintDiagnostic[] = [];
+
+  for (const section of document.sections) {
+    const allowedStructures =
+      sectionRules[section.heading.text] ??
+      sectionRules[normalizeHeadingId(section.heading.text)];
+
+    if (allowedStructures === undefined || section.paragraphs.length === 0) {
+      continue;
+    }
+
+    const paragraphAnalyses = section.paragraphs.map(analyzeParagraph);
+    const observedStructure = paragraphAnalyses.map(
+      (analysis) => analysis.sentenceCount,
+    );
+    const normalizedRule = normalizeSectionRule(allowedStructures);
+    const result = matchAnchoredSequence(
+      observedStructure,
+      toMatcherPatterns(normalizedRule),
+    );
+    const expectedStructures = flattenSectionRule(normalizedRule);
+
+    if (result.passed) {
+      continue;
+    }
+
+    diagnostics.push({
+      severity: "error",
+      message: `Heading section '${section.heading.text}' paragraph structure does not match allowed structures.`,
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: formatStructure(observedStructure),
+      expectedStructures: expectedStructures.map(({ structure }) =>
+        formatStructure(structure.counts),
+      ),
+      ...withExpectedStructureDetails(expectedStructures),
+    });
+  }
+
+  return diagnostics;
+}
+
+function normalizeHeadingId(heading: string): string {
+  return heading
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function lintSectionBalance(
+  document: MarkdownDocument,
+  filePath: string,
+  options: SectionBalanceOptions | undefined,
+  analyzeParagraph: ParagraphAnalyzer,
+): LintDiagnostic[] {
+  if (options === undefined || document.sections.length < 2) {
+    return [];
+  }
+
+  const ignoredHeadings = new Set(options.ignoreHeadings ?? []);
+  const measuredSections = document.sections
+    .filter((section) => !ignoredHeadings.has(section.heading.text))
+    .map((section) => ({
+      section,
+      size: measureSection(section, options.measure, analyzeParagraph),
+    }));
+
+  if (measuredSections.length < 2) {
+    return [];
+  }
+
+  const largest = measuredSections.reduce((current, candidate) =>
+    candidate.size > current.size ? candidate : current,
+  );
+  const smallest = measuredSections.reduce((current, candidate) =>
+    candidate.size < current.size ? candidate : current,
+  );
+  const observedRatio =
+    smallest.size === 0 ? Number.POSITIVE_INFINITY : largest.size / smallest.size;
+
+  if (observedRatio <= options.maxLargestToSmallestRatio) {
+    return [];
+  }
+
+  return [
+    {
+      severity: "error",
+      message: `Section balance exceeds configured ${options.measure} ratio: '${largest.section.heading.text}' is ${formatRatio(observedRatio)}x '${smallest.section.heading.text}'.`,
+      location: {
+        filePath,
+        line: largest.section.heading.line,
+        column: largest.section.heading.column,
+      },
+      section: {
+        title: largest.section.heading.text,
+        line: largest.section.heading.line,
+        level: largest.section.heading.depth,
+      },
+      observedStructure: `${largest.section.heading.text}:${largest.size} / ${smallest.section.heading.text}:${smallest.size} (${options.measure})`,
+      expectedStructures: [
+        `largest-to-smallest ratio <= ${options.maxLargestToSmallestRatio}`,
+      ],
+    },
+  ];
+}
+
+function lintListBalance(
+  document: MarkdownDocument,
+  filePath: string,
+  options: ListBalanceOptions | undefined,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+  const blockGroups = document.sections.length > 0
+    ? [blocksBeforeFirstHeading(document), ...document.sections.map((section) => section.blocks)]
+    : [document.contentBlocks];
+
+  for (const blocks of blockGroups) {
+    let consecutiveLists = 0;
+
+    blocks.forEach((block, index) => {
+      if (block.type !== "list") {
+        consecutiveLists = 0;
+        return;
+      }
+
+      consecutiveLists += 1;
+
+      if (
+        options.maxConsecutiveLists !== undefined &&
+        consecutiveLists > options.maxConsecutiveLists
+      ) {
+        diagnostics.push({
+          severity: "error",
+          message: `List balance allows at most ${options.maxConsecutiveLists} consecutive list${options.maxConsecutiveLists === 1 ? "" : "s"}.`,
+          location: {
+            filePath,
+            line: block.line,
+            column: block.column,
+          },
+          observedStructure: `${consecutiveLists} consecutive lists`,
+          expectedStructures: [
+            `consecutive lists <= ${options.maxConsecutiveLists}`,
+          ],
+        });
+      }
+
+      if (options.requireParagraphBeforeList === true && !hasAdjacentParagraph(blocks, index, -1)) {
+        diagnostics.push({
+          severity: "error",
+          message: "List balance requires a prose paragraph before each list.",
+          location: {
+            filePath,
+            line: block.line,
+            column: block.column,
+          },
+        });
+      }
+
+      if (options.requireParagraphAfterList === true && !hasAdjacentParagraph(blocks, index, 1)) {
+        diagnostics.push({
+          severity: "error",
+          message: "List balance requires a prose paragraph after each list.",
+          location: {
+            filePath,
+            line: block.line,
+            column: block.column,
+          },
+        });
+      }
+    });
+  }
+
+  return diagnostics;
+}
+
+function lintHeadingOrder(
+  document: MarkdownDocument,
+  filePath: string,
+  expectedOrder: readonly string[] | undefined,
+): LintDiagnostic[] {
+  if (expectedOrder === undefined || expectedOrder.length === 0) {
+    return [];
+  }
+
+  const orderByHeading = new Map(
+    expectedOrder.map((heading, index) => [heading, index]),
+  );
+  const observedHeadings = document.headings.filter((heading) =>
+    orderByHeading.has(heading.text),
+  );
+  let highestExpectedIndex = -1;
+
+  for (const heading of observedHeadings) {
+    const expectedIndex = orderByHeading.get(heading.text);
+
+    if (expectedIndex === undefined) {
+      continue;
+    }
+
+    if (expectedIndex < highestExpectedIndex) {
+      return [
+        {
+          severity: "error",
+          message: `Heading '${heading.text}' appears before a required earlier heading.`,
+          location: {
+            filePath,
+            line: heading.line,
+            column: heading.column,
+          },
+          section: {
+            title: heading.text,
+            line: heading.line,
+            level: heading.depth,
+          },
+          observedStructure: observedHeadings.map((item) => item.text).join(" -> "),
+          expectedStructures: [expectedOrder.join(" -> ")],
+        },
+      ];
+    }
+
+    highestExpectedIndex = expectedIndex;
+  }
+
+  return [];
+}
+
+function lintRequiredHeadings(
+  document: MarkdownDocument,
+  filePath: string,
+  requiredHeadings: readonly string[] | undefined,
+): LintDiagnostic[] {
+  if (requiredHeadings === undefined || requiredHeadings.length === 0) {
+    return [];
+  }
+
+  const observedHeadingIds = new Set(
+    document.headings.map((heading) => normalizeHeadingId(heading.text)),
+  );
+
+  return requiredHeadings
+    .filter((heading) => !observedHeadingIds.has(normalizeHeadingId(heading)))
+    .map((heading) => ({
+      severity: "error",
+      message: `Required heading '${heading}' is missing.`,
+      location: {
+        filePath,
+        line: 1,
+        column: 1,
+      },
+      observedStructure: document.headings.map((item) => item.text).join(" -> "),
+      expectedStructures: requiredHeadings,
+    }));
+}
+
+function lintTitle(
+  document: MarkdownDocument,
+  filePath: string,
+  options: TitleOptions | undefined,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const title = document.headings.find((heading) => heading.depth === 1);
+  if (title === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [
+    ...lintTextBounds("Title", title.text, title.line, title.column, filePath, {
+      minWords: options.minWords,
+      maxWords: options.maxWords,
+      minCharacters: options.minCharacters,
+      maxCharacters: options.maxCharacters,
+    }),
+  ];
+  const subtitle = findSubtitleParagraph(document, title);
+
+  if (subtitle === undefined) {
+    return diagnostics;
+  }
+
+  if (options.allowSubtitle === false) {
+    diagnostics.push({
+      severity: "error",
+      message: "Subtitle is not allowed by configured title rules.",
+      location: {
+        filePath,
+        line: subtitle.line,
+        column: subtitle.column,
+      },
+    });
+    return diagnostics;
+  }
+
+  diagnostics.push(
+    ...lintTextBounds("Subtitle", subtitle.text, subtitle.line, subtitle.column, filePath, {
+      maxWords: options.maxSubtitleWords,
+      maxCharacters: options.maxSubtitleCharacters,
+    }),
+  );
+
+  return diagnostics;
+}
+
+function lintIntroduction(
+  document: MarkdownDocument,
+  filePath: string,
+  options: IntroductionOptions | undefined,
+  analyzeParagraph: ParagraphAnalyzer,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const headingText = options.heading ?? "Introduction";
+  const section = document.sections.find((item) => item.heading.text === headingText);
+
+  if (section === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+  const paragraphAnalyses = section.paragraphs.map(analyzeParagraph);
+  const allowedStructures =
+    options.allowedStructures?.map(normalizeSectionStructure) ?? [];
+  const observedStructure = paragraphAnalyses.map((analysis) => analysis.sentenceCount);
+
+  if (
+    options.maxParagraphs !== undefined &&
+    section.paragraphs.length > options.maxParagraphs
+  ) {
+    diagnostics.push({
+      severity: "error",
+      message: `Introduction has ${section.paragraphs.length} paragraphs; expected <= ${options.maxParagraphs}.`,
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: formatStructure(observedStructure),
+      expectedStructures: [`paragraphs <= ${options.maxParagraphs}`],
+    });
+  }
+
+  if (
+    allowedStructures.length > 0 &&
+    !allowedStructures.some((structure) =>
+      structuresEqual(observedStructure, structure.counts),
+    )
+  ) {
+    diagnostics.push({
+      severity: "error",
+      message: "Introduction sentence structure does not match allowed structures.",
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: formatStructure(observedStructure),
+      expectedStructures: allowedStructures.map((structure) =>
+        formatStructure(structure.counts),
+      ),
+    });
+  }
+
+  const finalSentence = paragraphAnalyses.at(-1)?.sentences.at(-1);
+  if (
+    options.requireLastSentenceMarker !== undefined &&
+    options.requireLastSentenceMarker.length > 0 &&
+    (finalSentence === undefined ||
+      !options.requireLastSentenceMarker.some((marker) => finalSentence.includes(marker)))
+  ) {
+    diagnostics.push({
+      severity: "error",
+      message: "Introduction final sentence is missing a required marker phrase.",
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: finalSentence ?? "",
+      expectedStructures: options.requireLastSentenceMarker,
+    });
+  }
+
+  return diagnostics;
+}
+
+function structuresEqual(left: readonly number[], right: readonly number[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function lintWording(
+  document: MarkdownDocument,
+  filePath: string,
+  options: WordingOptions | undefined,
+): LintDiagnostic[] {
+  if (options === undefined || options.enabled === false) {
+    return [];
+  }
+
+  const useDefaults = options.useDefaults ?? true;
+  const termsBySource = new Map<string, "default" | "custom">();
+
+  if (useDefaults) {
+    for (const term of defaultVagueTerms) {
+      termsBySource.set(term, "default");
+    }
+  }
+
+  for (const term of options.bannedTerms ?? []) {
+    const normalizedTerm = term.trim();
+
+    if (normalizedTerm.length > 0) {
+      termsBySource.set(normalizedTerm, "custom");
+    }
+  }
+
+  const termPatterns = [...termsBySource.entries()].map(([term, source]) => ({
+    term,
+    source,
+    pattern: new RegExp(
+      `(?<![A-Za-z0-9])${escapeRegExp(term).replace(/\\ /g, "\\s+")}(?![A-Za-z0-9])`,
+      "gi",
+    ),
+  }));
+
+  if (termPatterns.length === 0) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+
+  document.paragraphs.forEach((paragraph) => {
+    for (const { term, source, pattern } of termPatterns) {
+      pattern.lastIndex = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = pattern.exec(paragraph.text)) !== null) {
+        diagnostics.push({
+          severity: "error",
+          message: `Wording uses banned ${source} term '${match[0]}'.`,
+          location: {
+            filePath,
+            line: paragraph.line,
+            column: paragraph.column + match.index,
+          },
+          observedStructure: match[0],
+          expectedStructures: [`avoid ${term}`],
+        });
+      }
+    }
+  });
+
+  return diagnostics.sort(
+    (left, right) =>
+      left.location.line - right.location.line ||
+      left.location.column - right.location.column,
+  );
+}
+
+function lintLists(
+  document: MarkdownDocument,
+  filePath: string,
+  options: ListsOptions | undefined,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+
+  for (const list of document.lists) {
+    const topLevelItemCount = list.items.filter((item) => item.depth === 1).length;
+
+    if (options.maxItems !== undefined && topLevelItemCount > options.maxItems) {
+      diagnostics.push({
+        severity: "error",
+        message: `List has ${topLevelItemCount} items; expected <= ${options.maxItems}.`,
+        location: {
+          filePath,
+          line: list.line,
+          column: list.column,
+        },
+        observedStructure: `${topLevelItemCount} items`,
+        expectedStructures: [`items <= ${options.maxItems}`],
+      });
+    }
+
+    for (const item of list.items) {
+      if (options.maxWordsPerItem !== undefined) {
+        const wordCount = countWords(item.text);
+
+        if (wordCount > options.maxWordsPerItem) {
+          diagnostics.push({
+            severity: "error",
+            message: `List item has ${wordCount} words; expected <= ${options.maxWordsPerItem}.`,
+            location: {
+              filePath,
+              line: item.line,
+              column: item.column,
+            },
+            observedStructure: `${wordCount} words`,
+            expectedStructures: [`words per item <= ${options.maxWordsPerItem}`],
+          });
+        }
+      }
+
+      if (options.maxDepth !== undefined && item.depth > options.maxDepth) {
+        diagnostics.push({
+          severity: "error",
+          message: `List item depth is ${item.depth}; expected <= ${options.maxDepth}.`,
+          location: {
+            filePath,
+            line: item.line,
+            column: item.column,
+          },
+          observedStructure: `depth ${item.depth}`,
+          expectedStructures: [`depth <= ${options.maxDepth}`],
+        });
+      }
+
+      if (
+        options.allowedPrefixes !== undefined &&
+        options.allowedPrefixes.length > 0 &&
+        !options.allowedPrefixes.some((prefix) => item.text.startsWith(prefix))
+      ) {
+        diagnostics.push({
+          severity: "error",
+          message: "List item does not start with an allowed prefix.",
+          location: {
+            filePath,
+            line: item.line,
+            column: item.column,
+          },
+          observedStructure: item.text,
+          expectedStructures: options.allowedPrefixes,
+        });
+      }
+    }
+  }
+
+  return diagnostics;
+}
+
+function lintTransitions(
+  document: MarkdownDocument,
+  filePath: string,
+  options: TransitionsOptions | undefined,
+  analyzeParagraph: ParagraphAnalyzer,
+): LintDiagnostic[] {
+  if (options === undefined || options.allowedStarts.length === 0) {
+    return [];
+  }
+
+  const requiredLevels = new Set(options.requiredAtHeadingLevels ?? []);
+  const requiredHeadings = new Set(options.requiredAtHeadings ?? []);
+  const caseSensitive = options.caseSensitive ?? false;
+  const allowedStarts = caseSensitive
+    ? options.allowedStarts
+    : options.allowedStarts.map((start) => start.toLocaleLowerCase());
+  const diagnostics: LintDiagnostic[] = [];
+
+  for (const section of document.sections) {
+    const selected =
+      requiredLevels.has(section.heading.depth) ||
+      requiredHeadings.has(section.heading.text);
+
+    if (!selected) {
+      continue;
+    }
+
+    const firstParagraph = section.paragraphs[0];
+    const firstSentence = firstParagraph === undefined
+      ? undefined
+      : analyzeParagraph(firstParagraph).sentences[0];
+    const comparableSentence = caseSensitive
+      ? firstSentence
+      : firstSentence?.toLocaleLowerCase();
+
+    if (
+      comparableSentence !== undefined &&
+      allowedStarts.some((start) => comparableSentence.startsWith(start))
+    ) {
+      continue;
+    }
+
+    diagnostics.push({
+      severity: "error",
+      message: `Section '${section.heading.text}' first sentence does not start with an allowed transition.`,
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: firstSentence ?? "",
+      expectedStructures: options.allowedStarts,
+    });
+  }
+
+  return diagnostics;
+}
+
+function lintHeadings(
+  document: MarkdownDocument,
+  filePath: string,
+  options: HeadingsOptions | undefined,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+  let h1Count = 0;
+  let previousDepth: number | undefined;
+
+  for (const heading of document.headings) {
+    if (heading.depth === 1) {
+      h1Count += 1;
+
+      if (options.singleH1 === true && h1Count > 1) {
+        diagnostics.push(headingDiagnostic(
+          filePath,
+          heading,
+          "Document has multiple H1 headings.",
+          `H1 count ${h1Count}`,
+          "single H1",
+        ));
+      }
+    }
+
+    if (options.maxDepth !== undefined && heading.depth > options.maxDepth) {
+      diagnostics.push(headingDiagnostic(
+        filePath,
+        heading,
+        `Heading depth is ${heading.depth}; expected <= ${options.maxDepth}.`,
+        `depth ${heading.depth}`,
+        `depth <= ${options.maxDepth}`,
+      ));
+    }
+
+    if (
+      options.forbidSkippedLevels === true &&
+      previousDepth !== undefined &&
+      heading.depth > previousDepth + 1
+    ) {
+      diagnostics.push(headingDiagnostic(
+        filePath,
+        heading,
+        `Heading level skips from H${previousDepth} to H${heading.depth}.`,
+        `H${previousDepth} -> H${heading.depth}`,
+        "no skipped heading levels",
+      ));
+    }
+
+    previousDepth = heading.depth;
+  }
+
+  return diagnostics;
+}
+
+function lintSectionLength(
+  document: MarkdownDocument,
+  filePath: string,
+  options: SectionLengthOptions | undefined,
+  analyzeParagraph: ParagraphAnalyzer,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+
+  for (const section of document.sections) {
+    const limit = findSectionLengthLimit(options, section.heading.text);
+
+    if (limit === undefined) {
+      continue;
+    }
+
+    const measures = {
+      paragraphs: section.paragraphs.length,
+      words: measureSection(section, "words", analyzeParagraph),
+      sentences: measureSection(section, "sentences", analyzeParagraph),
+      listItems: section.blocks
+        .filter((block): block is MarkdownContentBlock & { type: "list" } => block.type === "list")
+        .reduce((total, list) => total + list.items.length, 0),
+    };
+
+    diagnostics.push(
+      ...sectionLengthDiagnostics(filePath, section, "paragraphs", measures.paragraphs, limit.maxParagraphs),
+      ...sectionLengthDiagnostics(filePath, section, "words", measures.words, limit.maxWords),
+      ...sectionLengthDiagnostics(filePath, section, "sentences", measures.sentences, limit.maxSentences),
+      ...sectionLengthDiagnostics(filePath, section, "list items", measures.listItems, limit.maxListItems),
+    );
+  }
+
+  return diagnostics;
+}
+
+function findSectionLengthLimit(
+  options: SectionLengthOptions,
+  heading: string,
+): SectionLengthLimit | undefined {
+  return options[heading] ?? options[normalizeHeadingId(heading)] ?? options.default;
+}
+
+function sectionLengthDiagnostics(
+  filePath: string,
+  section: MarkdownSection,
+  measure: string,
+  observed: number,
+  limit: number | undefined,
+): LintDiagnostic[] {
+  if (limit === undefined || observed <= limit) {
+    return [];
+  }
+
+  return [
+    {
+      severity: "error",
+      message: `Section '${section.heading.text}' has ${observed} ${measure}; expected <= ${limit}.`,
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: `${observed} ${measure}`,
+      expectedStructures: [`${measure} <= ${limit}`],
+    },
+  ];
+}
+
+function headingDiagnostic(
+  filePath: string,
+  heading: MarkdownDocument["headings"][number],
+  message: string,
+  observed: string,
+  expected: string,
+): LintDiagnostic {
+  return {
+    severity: "error",
+    message,
+    location: {
+      filePath,
+      line: heading.line,
+      column: heading.column,
+    },
+    section: {
+      title: heading.text,
+      line: heading.line,
+      level: heading.depth,
+    },
+    observedStructure: observed,
+    expectedStructures: [expected],
+  };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function findSubtitleParagraph(
+  document: MarkdownDocument,
+  title: { line: number },
+): MarkdownParagraph | undefined {
+  const titleSection = document.sections.find((section) => section.heading.line === title.line);
+
+  return titleSection?.paragraphs[0];
+}
+
+function lintTextBounds(
+  label: "Title" | "Subtitle",
+  text: string,
+  line: number,
+  column: number,
+  filePath: string,
+  options: {
+    minWords?: number;
+    maxWords?: number;
+    minCharacters?: number;
+    maxCharacters?: number;
+  },
+): LintDiagnostic[] {
+  const diagnostics: LintDiagnostic[] = [];
+  const wordCount = countWords(text);
+  const characterCount = text.length;
+
+  if (options.minWords !== undefined && wordCount < options.minWords) {
+    diagnostics.push(textBoundDiagnostic(label, "words", wordCount, `>= ${options.minWords}`, filePath, line, column));
+  }
+
+  if (options.maxWords !== undefined && wordCount > options.maxWords) {
+    diagnostics.push(textBoundDiagnostic(label, "words", wordCount, `<= ${options.maxWords}`, filePath, line, column));
+  }
+
+  if (options.minCharacters !== undefined && characterCount < options.minCharacters) {
+    diagnostics.push(textBoundDiagnostic(label, "characters", characterCount, `>= ${options.minCharacters}`, filePath, line, column));
+  }
+
+  if (options.maxCharacters !== undefined && characterCount > options.maxCharacters) {
+    diagnostics.push(textBoundDiagnostic(label, "characters", characterCount, `<= ${options.maxCharacters}`, filePath, line, column));
+  }
+
+  return diagnostics;
+}
+
+function textBoundDiagnostic(
+  label: "Title" | "Subtitle",
+  unit: "words" | "characters",
+  observed: number,
+  expected: string,
+  filePath: string,
+  line: number,
+  column: number,
+): LintDiagnostic {
+  return {
+    severity: "error",
+    message: `${label} has ${observed} ${unit}; expected ${expected}.`,
+    location: {
+      filePath,
+      line,
+      column,
+    },
+    observedStructure: `${observed} ${unit}`,
+    expectedStructures: [`${unit} ${expected}`],
+  };
+}
+
+function hasAdjacentParagraph(
+  blocks: readonly MarkdownContentBlock[],
+  index: number,
+  direction: -1 | 1,
+): boolean {
+  const adjacent = blocks[index + direction];
+
+  return adjacent?.type === "paragraph";
+}
+
+function measureSection(
+  section: MarkdownSection,
+  measure: SectionBalanceMeasure,
+  analyzeParagraph: ParagraphAnalyzer,
+): number {
+  if (measure === "paragraphs") {
+    return section.paragraphs.length;
+  }
+
+  if (measure === "sentences") {
+    return section.paragraphs.reduce(
+      (total, paragraph) =>
+        total + analyzeParagraph(paragraph).sentenceCount,
+      0,
+    );
+  }
+
+  return section.paragraphs.reduce(
+    (total, paragraph) => total + countWords(paragraph.text),
+    0,
+  );
+}
+
+function countWords(text: string): number {
+  return text.match(/[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*/g)?.length ?? 0;
+}
+
+function formatRatio(ratio: number): string {
+  return Number.isFinite(ratio) ? ratio.toFixed(2) : "Infinity";
+}
+
+type ParagraphAnalyzer = (paragraph: MarkdownParagraph) => ParagraphStructureAnalysis;
+
+function createParagraphAnalyzer(options: {
+  language: string;
+  protectedPatterns: readonly RegExp[];
+}): ParagraphAnalyzer {
+  const cache = new Map<MarkdownParagraph, ParagraphStructureAnalysis>();
+
+  return (paragraph) => {
+    const cached = cache.get(paragraph);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const analysis = analyzeParagraphStructure(paragraph, options);
+    cache.set(paragraph, analysis);
+
+    return analysis;
+  };
+}
+
+function blocksBeforeFirstHeading(document: MarkdownDocument): MarkdownContentBlock[] {
+  const firstHeadingIndex = document.contentBlocks.findIndex(
+    (block) => block.type === "heading",
+  );
+
+  if (firstHeadingIndex === -1) {
+    return document.contentBlocks;
+  }
+
+  return document.contentBlocks.slice(0, firstHeadingIndex);
 }
 
 interface NormalizedSectionRule {

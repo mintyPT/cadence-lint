@@ -79,4 +79,58 @@ describe("parseMarkdownDocument", () => {
       },
     ]);
   });
+
+  it("extracts headings, list blocks, and heading sections without changing public blocks", () => {
+    const document = parseMarkdownDocument([
+      "# Title",
+      "",
+      "Opening paragraph.",
+      "",
+      "## Body",
+      "",
+      "- Add context",
+      "  - Nested detail",
+      "- Verify outcome",
+      "",
+      "Body paragraph.",
+    ].join("\n"));
+
+    expect(document.blocks.map((block) => block.type)).toEqual([
+      "paragraph",
+      "paragraph",
+    ]);
+    expect(document.contentBlocks.map((block) => block.type)).toEqual([
+      "heading",
+      "paragraph",
+      "heading",
+      "list",
+      "paragraph",
+    ]);
+    expect(document.headings).toEqual([
+      expect.objectContaining({ type: "heading", depth: 1, text: "Title", line: 1 }),
+      expect.objectContaining({ type: "heading", depth: 2, text: "Body", line: 5 }),
+    ]);
+    expect(document.lists).toEqual([
+      expect.objectContaining({
+        type: "list",
+        ordered: false,
+        line: 7,
+        items: [
+          expect.objectContaining({ text: "Add context", depth: 1, line: 7 }),
+          expect.objectContaining({ text: "Nested detail", depth: 2, line: 8 }),
+          expect.objectContaining({ text: "Verify outcome", depth: 1, line: 9 }),
+        ],
+      }),
+    ]);
+    expect(document.sections).toEqual([
+      expect.objectContaining({
+        heading: expect.objectContaining({ text: "Title" }),
+        paragraphs: [expect.objectContaining({ text: "Opening paragraph." })],
+      }),
+      expect.objectContaining({
+        heading: expect.objectContaining({ text: "Body" }),
+        paragraphs: [expect.objectContaining({ text: "Body paragraph." })],
+      }),
+    ]);
+  });
 });

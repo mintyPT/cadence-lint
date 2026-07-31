@@ -1,0 +1,39 @@
+{
+  "sectionBalance": {
+    "measure": "words",
+    "maxLargestToSmallestRatio": 2,
+    "ignoreHeadings": ["Introduction"]
+  },
+  "listBalance": {
+    "maxConsecutiveLists": 1,
+    "requireParagraphBeforeList": true,
+    "requireParagraphAfterList": true
+  },
+  "headingOrder": ["Introduction", "Argument", "Conclusion"],
+  "title": {
+    "maxWords": 6,
+    "maxCharacters": 50,
+    "allowSubtitle": false
+  },
+  "introduction": {
+    "heading": "Introduction",
+    "maxParagraphs": 1,
+    "allowedStructures": ["2"],
+    "requireLastSentenceMarker": ["This essay argues"]
+  },
+  "lists": {
+    "maxItems": 1,
+    "maxWordsPerItem": 5,
+    "maxDepth": 1,
+    "allowedPrefixes": ["Add"]
+  },
+  "transitions": {
+    "requiredAtHeadingLevels": [2],
+    "allowedStarts": ["However", "Finally"]
+  },
+  "headings": {
+    "maxDepth": 3,
+    "forbidSkippedLevels": true,
+    "singleH1": true
+  }
+}

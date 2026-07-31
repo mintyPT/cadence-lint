@@ -2,17 +2,39 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   parseStructurePattern,
+  type HeadingsOptions,
+  type IntroductionOptions,
+  type ListBalanceOptions,
+  type ListsOptions,
+  type SectionBalanceOptions,
+  type SectionLengthLimit,
+  type SectionLengthOptions,
   type SectionStructure,
   type SectionRule,
   type SectionStructureRules,
   type SectionStructureSegment,
   type SectionStructurePattern,
+  type TitleOptions,
+  type TransitionsOptions,
+  type WordingOptions,
 } from "../index.js";
 
 export interface CadenceCliConfig {
   language: string;
   sectionRules: SectionStructureRules;
+  headingSectionRules: SectionStructureRules;
   protectedPatterns: readonly RegExp[];
+  sectionBalance?: SectionBalanceOptions;
+  listBalance?: ListBalanceOptions;
+  headingOrder?: readonly string[];
+  requiredHeadings?: readonly string[];
+  title?: TitleOptions;
+  introduction?: IntroductionOptions;
+  wording?: WordingOptions;
+  lists?: ListsOptions;
+  transitions?: TransitionsOptions;
+  headings?: HeadingsOptions;
+  sectionLength?: SectionLengthOptions;
 }
 
 export async function loadCadenceConfig(options: {
@@ -41,7 +63,31 @@ export async function loadCadenceConfig(options: {
   return {
     language: readLanguage(parsed),
     sectionRules: readSectionRules(parsed),
+    headingSectionRules: readHeadingSectionRules(parsed),
     protectedPatterns: readProtectedPatterns(parsed),
+    ...withOptionalConfig("sectionBalance", readSectionBalance(parsed)),
+    ...withOptionalConfig("listBalance", readListBalance(parsed)),
+    ...withOptionalConfig(
+      "headingOrder",
+      readStringArray(
+        isRecord(parsed) ? parsed.headingOrder : undefined,
+        "cadence-lint: config headingOrder must be an array of strings",
+      ),
+    ),
+    ...withOptionalConfig(
+      "requiredHeadings",
+      readStringArray(
+        isRecord(parsed) ? parsed.requiredHeadings : undefined,
+        "cadence-lint: config requiredHeadings must be an array of strings",
+      ),
+    ),
+    ...withOptionalConfig("title", readTitle(parsed)),
+    ...withOptionalConfig("introduction", readIntroduction(parsed)),
+    ...withOptionalConfig("wording", readWording(parsed)),
+    ...withOptionalConfig("lists", readLists(parsed)),
+    ...withOptionalConfig("transitions", readTransitions(parsed)),
+    ...withOptionalConfig("headings", readHeadings(parsed)),
+    ...withOptionalConfig("sectionLength", readSectionLength(parsed)),
   };
 }
 
@@ -49,8 +95,16 @@ export function defaultConfig(): CadenceCliConfig {
   return {
     language: "en",
     sectionRules: {},
+    headingSectionRules: {},
     protectedPatterns: [],
   };
+}
+
+function withOptionalConfig<Key extends string, Value>(
+  key: Key,
+  value: Value | undefined,
+): Record<Key, Value> | Record<string, never> {
+  return value === undefined ? {} : { [key]: value } as Record<Key, Value>;
 }
 
 function parseJsonc(contents: string, configPath: string): unknown {
@@ -83,9 +137,27 @@ function readSectionRules(config: unknown): SectionStructureRules {
     throw new Error("cadence-lint: config sections must be an object");
   }
 
+  return readSectionRuleEntries(config.sections);
+}
+
+function readHeadingSectionRules(config: unknown): SectionStructureRules {
+  if (!isRecord(config) || config.headingSections === undefined) {
+    return {};
+  }
+
+  if (!isRecord(config.headingSections)) {
+    throw new Error("cadence-lint: config headingSections must be an object");
+  }
+
+  return readSectionRuleEntries(config.headingSections);
+}
+
+function readSectionRuleEntries(
+  rules: Record<string, unknown>,
+): SectionStructureRules {
   const sectionRules: SectionStructureRules = {};
 
-  for (const [sectionName, patterns] of Object.entries(config.sections)) {
+  for (const [sectionName, patterns] of Object.entries(rules)) {
     if (isAnchoredSectionRuleObject(patterns)) {
       sectionRules[sectionName] = readAnchoredSectionRule(sectionName, patterns);
       continue;
@@ -291,6 +363,462 @@ function readProtectedPatterns(config: unknown): readonly RegExp[] {
       );
     }
   });
+}
+
+function readSectionBalance(config: unknown): SectionBalanceOptions | undefined {
+  if (!isRecord(config) || config.sectionBalance === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.sectionBalance)) {
+    throw new Error("cadence-lint: config sectionBalance must be an object");
+  }
+
+  const measure = config.sectionBalance.measure ?? "words";
+  if (measure !== "words" && measure !== "sentences" && measure !== "paragraphs") {
+    throw new Error(
+      "cadence-lint: config sectionBalance.measure must be words, sentences, or paragraphs",
+    );
+  }
+
+  const ratio = config.sectionBalance.maxLargestToSmallestRatio;
+  if (typeof ratio !== "number" || ratio <= 0) {
+    throw new Error(
+      "cadence-lint: config sectionBalance.maxLargestToSmallestRatio must be a positive number",
+    );
+  }
+
+  return {
+    measure,
+    maxLargestToSmallestRatio: ratio,
+    ...withOptionalConfig(
+      "ignoreHeadings",
+      readStringArray(
+        config.sectionBalance.ignoreHeadings,
+        "cadence-lint: config sectionBalance.ignoreHeadings must be an array of strings",
+      ),
+    ),
+  };
+}
+
+function readListBalance(config: unknown): ListBalanceOptions | undefined {
+  if (!isRecord(config) || config.listBalance === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.listBalance)) {
+    throw new Error("cadence-lint: config listBalance must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "maxConsecutiveLists",
+      readOptionalPositiveInteger(
+        config.listBalance.maxConsecutiveLists,
+        "cadence-lint: config listBalance.maxConsecutiveLists must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "requireParagraphBeforeList",
+      readOptionalBoolean(
+        config.listBalance.requireParagraphBeforeList,
+        "cadence-lint: config listBalance.requireParagraphBeforeList must be a boolean",
+      ),
+    ),
+    ...withOptionalConfig(
+      "requireParagraphAfterList",
+      readOptionalBoolean(
+        config.listBalance.requireParagraphAfterList,
+        "cadence-lint: config listBalance.requireParagraphAfterList must be a boolean",
+      ),
+    ),
+  };
+}
+
+function readTitle(config: unknown): TitleOptions | undefined {
+  if (!isRecord(config) || config.title === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.title)) {
+    throw new Error("cadence-lint: config title must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "minWords",
+      readOptionalPositiveInteger(
+        config.title.minWords,
+        "cadence-lint: config title.minWords must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxWords",
+      readOptionalPositiveInteger(
+        config.title.maxWords,
+        "cadence-lint: config title.maxWords must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "minCharacters",
+      readOptionalPositiveInteger(
+        config.title.minCharacters,
+        "cadence-lint: config title.minCharacters must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxCharacters",
+      readOptionalPositiveInteger(
+        config.title.maxCharacters,
+        "cadence-lint: config title.maxCharacters must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "allowSubtitle",
+      readOptionalBoolean(
+        config.title.allowSubtitle,
+        "cadence-lint: config title.allowSubtitle must be a boolean",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxSubtitleWords",
+      readOptionalPositiveInteger(
+        config.title.maxSubtitleWords,
+        "cadence-lint: config title.maxSubtitleWords must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxSubtitleCharacters",
+      readOptionalPositiveInteger(
+        config.title.maxSubtitleCharacters,
+        "cadence-lint: config title.maxSubtitleCharacters must be a positive integer",
+      ),
+    ),
+  };
+}
+
+function readIntroduction(config: unknown): IntroductionOptions | undefined {
+  if (!isRecord(config) || config.introduction === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.introduction)) {
+    throw new Error("cadence-lint: config introduction must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "heading",
+      readOptionalString(
+        config.introduction.heading,
+        "cadence-lint: config introduction.heading must be a string",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxParagraphs",
+      readOptionalPositiveInteger(
+        config.introduction.maxParagraphs,
+        "cadence-lint: config introduction.maxParagraphs must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "allowedStructures",
+      config.introduction.allowedStructures === undefined
+        ? undefined
+        : readPatternBucket(
+            "introduction",
+            "any",
+            config.introduction.allowedStructures,
+          ),
+    ),
+    ...withOptionalConfig(
+      "requireLastSentenceMarker",
+      readStringArray(
+        config.introduction.requireLastSentenceMarker,
+        "cadence-lint: config introduction.requireLastSentenceMarker must be an array of strings",
+      ),
+    ),
+  };
+}
+
+function readWording(config: unknown): WordingOptions | undefined {
+  if (!isRecord(config) || config.wording === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.wording)) {
+    throw new Error("cadence-lint: config wording must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "enabled",
+      readOptionalBoolean(
+        config.wording.enabled,
+        "cadence-lint: config wording.enabled must be a boolean",
+      ),
+    ),
+    ...withOptionalConfig(
+      "bannedTerms",
+      readStringArray(
+        config.wording.bannedTerms,
+        "cadence-lint: config wording.bannedTerms must be an array of strings",
+      ),
+    ),
+    ...withOptionalConfig(
+      "useDefaults",
+      readOptionalBoolean(
+        config.wording.useDefaults,
+        "cadence-lint: config wording.useDefaults must be a boolean",
+      ),
+    ),
+  };
+}
+
+function readLists(config: unknown): ListsOptions | undefined {
+  if (!isRecord(config) || config.lists === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.lists)) {
+    throw new Error("cadence-lint: config lists must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "maxItems",
+      readOptionalPositiveInteger(
+        config.lists.maxItems,
+        "cadence-lint: config lists.maxItems must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxWordsPerItem",
+      readOptionalPositiveInteger(
+        config.lists.maxWordsPerItem,
+        "cadence-lint: config lists.maxWordsPerItem must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxDepth",
+      readOptionalPositiveInteger(
+        config.lists.maxDepth,
+        "cadence-lint: config lists.maxDepth must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "allowedPrefixes",
+      readStringArray(
+        config.lists.allowedPrefixes,
+        "cadence-lint: config lists.allowedPrefixes must be an array of strings",
+      ),
+    ),
+  };
+}
+
+function readTransitions(config: unknown): TransitionsOptions | undefined {
+  if (!isRecord(config) || config.transitions === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.transitions)) {
+    throw new Error("cadence-lint: config transitions must be an object");
+  }
+
+  const allowedStarts = readStringArray(
+    config.transitions.allowedStarts,
+    "cadence-lint: config transitions.allowedStarts must be an array of strings",
+  );
+
+  if (allowedStarts === undefined || allowedStarts.length === 0) {
+    throw new Error(
+      "cadence-lint: config transitions.allowedStarts must define at least one string",
+    );
+  }
+
+  return {
+    allowedStarts,
+    ...withOptionalConfig(
+      "requiredAtHeadingLevels",
+      readOptionalPositiveIntegerArray(
+        config.transitions.requiredAtHeadingLevels,
+        "cadence-lint: config transitions.requiredAtHeadingLevels must be an array of positive integers",
+      ),
+    ),
+    ...withOptionalConfig(
+      "requiredAtHeadings",
+      readStringArray(
+        config.transitions.requiredAtHeadings,
+        "cadence-lint: config transitions.requiredAtHeadings must be an array of strings",
+      ),
+    ),
+    ...withOptionalConfig(
+      "caseSensitive",
+      readOptionalBoolean(
+        config.transitions.caseSensitive,
+        "cadence-lint: config transitions.caseSensitive must be a boolean",
+      ),
+    ),
+  };
+}
+
+function readHeadings(config: unknown): HeadingsOptions | undefined {
+  if (!isRecord(config) || config.headings === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.headings)) {
+    throw new Error("cadence-lint: config headings must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "maxDepth",
+      readOptionalPositiveInteger(
+        config.headings.maxDepth,
+        "cadence-lint: config headings.maxDepth must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "forbidSkippedLevels",
+      readOptionalBoolean(
+        config.headings.forbidSkippedLevels,
+        "cadence-lint: config headings.forbidSkippedLevels must be a boolean",
+      ),
+    ),
+    ...withOptionalConfig(
+      "singleH1",
+      readOptionalBoolean(
+        config.headings.singleH1,
+        "cadence-lint: config headings.singleH1 must be a boolean",
+      ),
+    ),
+  };
+}
+
+function readSectionLength(config: unknown): SectionLengthOptions | undefined {
+  if (!isRecord(config) || config.sectionLength === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.sectionLength)) {
+    throw new Error("cadence-lint: config sectionLength must be an object");
+  }
+
+  const sectionLength: SectionLengthOptions = {};
+
+  for (const [heading, value] of Object.entries(config.sectionLength)) {
+    sectionLength[heading] = readSectionLengthLimit(heading, value);
+  }
+
+  return sectionLength;
+}
+
+function readSectionLengthLimit(
+  heading: string,
+  value: unknown,
+): SectionLengthLimit {
+  if (!isRecord(value)) {
+    throw new Error(
+      `cadence-lint: config sectionLength.${heading} must be an object`,
+    );
+  }
+
+  return {
+    ...withOptionalConfig(
+      "maxParagraphs",
+      readOptionalPositiveInteger(
+        value.maxParagraphs,
+        `cadence-lint: config sectionLength.${heading}.maxParagraphs must be a positive integer`,
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxWords",
+      readOptionalPositiveInteger(
+        value.maxWords,
+        `cadence-lint: config sectionLength.${heading}.maxWords must be a positive integer`,
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxSentences",
+      readOptionalPositiveInteger(
+        value.maxSentences,
+        `cadence-lint: config sectionLength.${heading}.maxSentences must be a positive integer`,
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxListItems",
+      readOptionalPositiveInteger(
+        value.maxListItems,
+        `cadence-lint: config sectionLength.${heading}.maxListItems must be a positive integer`,
+      ),
+    ),
+  };
+}
+
+function readOptionalPositiveIntegerArray(
+  value: unknown,
+  errorMessage: string,
+): readonly number[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (
+    !Array.isArray(value) ||
+    value.some(
+      (item) => typeof item !== "number" || !Number.isInteger(item) || item <= 0,
+    )
+  ) {
+    throw new Error(errorMessage);
+  }
+
+  return value;
+}
+
+function readOptionalPositiveInteger(
+  value: unknown,
+  errorMessage: string,
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(errorMessage);
+  }
+
+  return value;
+}
+
+function readOptionalBoolean(
+  value: unknown,
+  errorMessage: string,
+): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "boolean") {
+    throw new Error(errorMessage);
+  }
+
+  return value;
+}
+
+function readStringArray(
+  value: unknown,
+  errorMessage: string,
+): readonly string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(errorMessage);
+  }
+
+  return value;
 }
 
 function stripJsonComments(contents: string): string {
