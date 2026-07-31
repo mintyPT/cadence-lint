@@ -46,6 +46,10 @@ export function parseCadenceMarkedSections(
       continue;
     }
 
+    if (block.type !== "htmlComment") {
+      continue;
+    }
+
     const marker = parseCadenceMarker(block);
 
     if (marker === undefined) {
@@ -106,6 +110,10 @@ export function validateCadenceMarkers(
   for (const block of document.blocks) {
     if (block.type === "paragraph") {
       openSection?.paragraphs.push(block);
+      continue;
+    }
+
+    if (block.type !== "htmlComment") {
       continue;
     }
 

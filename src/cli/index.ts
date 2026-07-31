@@ -85,6 +85,7 @@ program.action(async (files: string[], options: CliOptions) => {
       language,
       protectedPatterns: config.protectedPatterns,
       sectionRules,
+      sectionBalance: config.sectionBalance,
     });
     diagnostics.push(...result.diagnostics);
   }

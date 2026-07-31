@@ -483,6 +483,55 @@ describe("cli", () => {
     expect(result.stdout).toBe("cadence-lint: no issues found");
   }, cliTestTimeout);
 
+  it("loads section balance rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sectionBalance": {',
+        '    "measure": "words",',
+        '    "maxLargestToSmallestRatio": 2,',
+        '    "ignoreHeadings": ["Introduction"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "Ignored.",
+        "",
+        "## Background",
+        "",
+        "One two.",
+        "",
+        "## Argument",
+        "",
+        "One two three four five.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({
+        message:
+          "Section balance exceeds configured words ratio: 'Argument' is 2.50x 'Background'.",
+        observedStructure: "Argument:5 / Background:2 (words)",
+        expectedStructures: ["largest-to-smallest ratio <= 2"],
+      }),
+    );
+  }, cliTestTimeout);
+
   it("loads described section structures from cadence.config.jsonc", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");

@@ -23,9 +23,13 @@ export {
   parseMarkdownDocument,
   type MarkdownBlock,
   type MarkdownDocument,
+  type MarkdownHeadingBlock,
   type MarkdownHtmlCommentBlock,
+  type MarkdownListBlock,
+  type MarkdownListItem,
   type MarkdownParagraph,
   type MarkdownParagraphBlock,
+  type MarkdownSection,
 } from "./markdown-document.js";
 export {
   findParagraphsOutsideCadenceMarkers,
@@ -53,7 +57,9 @@ import type {
 } from "./diagnostics.js";
 import {
   parseMarkdownDocument,
+  type MarkdownDocument,
   type MarkdownParagraph,
+  type MarkdownSection,
 } from "./markdown-document.js";
 import {
   findParagraphsOutsideCadenceMarkers,
@@ -92,12 +98,21 @@ export type SectionStructureRule =
   | SectionRule;
 export type SectionStructureRules = Record<string, SectionStructureRule>;
 
+export type SectionBalanceMeasure = "words" | "sentences" | "paragraphs";
+
+export interface SectionBalanceOptions {
+  measure: SectionBalanceMeasure;
+  maxLargestToSmallestRatio: number;
+  ignoreHeadings?: readonly string[];
+}
+
 export interface LintMarkdownOptions {
   filePath?: string;
   language?: string;
   allowedSectionNames?: readonly string[];
   sectionRules?: SectionStructureRules;
   protectedPatterns?: readonly RegExp[];
+  sectionBalance?: SectionBalanceOptions;
 }
 
 export interface LintResult {
@@ -122,6 +137,10 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
       ...diagnostics,
       ...lintCadenceMarkerCoverage(document, filePath),
       ...lintMarkedSectionStructures(document, filePath, options.sectionRules ?? {}, {
+        language,
+        protectedPatterns: options.protectedPatterns ?? [],
+      }),
+      ...lintSectionBalance(document, filePath, options.sectionBalance, {
         language,
         protectedPatterns: options.protectedPatterns ?? [],
       }),
@@ -223,6 +242,94 @@ function lintMarkedSectionStructures(
   }
 
   return diagnostics;
+}
+
+function lintSectionBalance(
+  document: MarkdownDocument,
+  filePath: string,
+  options: SectionBalanceOptions | undefined,
+  sentenceOptions: { language: string; protectedPatterns: readonly RegExp[] },
+): LintDiagnostic[] {
+  if (options === undefined || document.sections.length < 2) {
+    return [];
+  }
+
+  const ignoredHeadings = new Set(options.ignoreHeadings ?? []);
+  const measuredSections = document.sections
+    .filter((section) => !ignoredHeadings.has(section.heading.text))
+    .map((section) => ({
+      section,
+      size: measureSection(section, options.measure, sentenceOptions),
+    }));
+
+  if (measuredSections.length < 2) {
+    return [];
+  }
+
+  const largest = measuredSections.reduce((current, candidate) =>
+    candidate.size > current.size ? candidate : current,
+  );
+  const smallest = measuredSections.reduce((current, candidate) =>
+    candidate.size < current.size ? candidate : current,
+  );
+  const observedRatio =
+    smallest.size === 0 ? Number.POSITIVE_INFINITY : largest.size / smallest.size;
+
+  if (observedRatio <= options.maxLargestToSmallestRatio) {
+    return [];
+  }
+
+  return [
+    {
+      severity: "error",
+      message: `Section balance exceeds configured ${options.measure} ratio: '${largest.section.heading.text}' is ${formatRatio(observedRatio)}x '${smallest.section.heading.text}'.`,
+      location: {
+        filePath,
+        line: largest.section.heading.line,
+        column: largest.section.heading.column,
+      },
+      section: {
+        title: largest.section.heading.text,
+        line: largest.section.heading.line,
+        level: largest.section.heading.depth,
+      },
+      observedStructure: `${largest.section.heading.text}:${largest.size} / ${smallest.section.heading.text}:${smallest.size} (${options.measure})`,
+      expectedStructures: [
+        `largest-to-smallest ratio <= ${options.maxLargestToSmallestRatio}`,
+      ],
+    },
+  ];
+}
+
+function measureSection(
+  section: MarkdownSection,
+  measure: SectionBalanceMeasure,
+  sentenceOptions: { language: string; protectedPatterns: readonly RegExp[] },
+): number {
+  if (measure === "paragraphs") {
+    return section.paragraphs.length;
+  }
+
+  if (measure === "sentences") {
+    return section.paragraphs.reduce(
+      (total, paragraph) =>
+        total + analyzeParagraphStructure(paragraph, sentenceOptions).sentenceCount,
+      0,
+    );
+  }
+
+  return section.paragraphs.reduce(
+    (total, paragraph) => total + countWords(paragraph.text),
+    0,
+  );
+}
+
+function countWords(text: string): number {
+  return text.match(/[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*/g)?.length ?? 0;
+}
+
+function formatRatio(ratio: number): string {
+  return Number.isFinite(ratio) ? ratio.toFixed(2) : "Infinity";
 }
 
 interface NormalizedSectionRule {

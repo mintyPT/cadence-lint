@@ -293,6 +293,93 @@ describe("lintMarkdown", () => {
     });
   });
 
+  it("passes heading sections within the configured section balance ratio", () => {
+    const markdown = [
+      "## Background",
+      "",
+      "One two three four.",
+      "",
+      "## Argument",
+      "",
+      "One two three four five six.",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        sectionBalance: {
+          measure: "words",
+          maxLargestToSmallestRatio: 2,
+        },
+      }).diagnostics.filter((diagnostic) => diagnostic.severity === "error"),
+    ).toEqual([]);
+  });
+
+  it("reports heading sections that exceed the configured section balance ratio", () => {
+    const markdown = [
+      "## Background",
+      "",
+      "One two.",
+      "",
+      "## Argument",
+      "",
+      "One two three four five six seven eight nine.",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        filePath: "essay.md",
+        sectionBalance: {
+          measure: "words",
+          maxLargestToSmallestRatio: 4,
+        },
+      }).diagnostics,
+    ).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        message:
+          "Section balance exceeds configured words ratio: 'Argument' is 4.50x 'Background'.",
+        location: {
+          filePath: "essay.md",
+          line: 5,
+          column: 1,
+        },
+        section: {
+          title: "Argument",
+          line: 5,
+          level: 2,
+        },
+        observedStructure: "Argument:9 / Background:2 (words)",
+        expectedStructures: ["largest-to-smallest ratio <= 4"],
+      }),
+    );
+  });
+
+  it("ignores configured headings in section balance checks", () => {
+    const markdown = [
+      "## Introduction",
+      "",
+      "One.",
+      "",
+      "## Background",
+      "",
+      "One two three four.",
+      "",
+      "## Argument",
+      "",
+      "One two three four five six.",
+    ].join("\n");
+
+    expect(
+      lintMarkdown(markdown, {
+        sectionBalance: {
+          measure: "words",
+          maxLargestToSmallestRatio: 2,
+          ignoreHeadings: ["Introduction"],
+        },
+      }).diagnostics.filter((diagnostic) => diagnostic.severity === "error"),
+    ).toEqual([]);
+  });
+
   it("reports anchored expected structure details with placement on mismatches", () => {
     const markdown = [
       "<!-- cadence:overview -->",

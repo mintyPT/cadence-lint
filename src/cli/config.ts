@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   parseStructurePattern,
+  type SectionBalanceOptions,
   type SectionStructure,
   type SectionRule,
   type SectionStructureRules,
@@ -13,6 +14,7 @@ export interface CadenceCliConfig {
   language: string;
   sectionRules: SectionStructureRules;
   protectedPatterns: readonly RegExp[];
+  sectionBalance?: SectionBalanceOptions;
 }
 
 export async function loadCadenceConfig(options: {
@@ -42,6 +44,7 @@ export async function loadCadenceConfig(options: {
     language: readLanguage(parsed),
     sectionRules: readSectionRules(parsed),
     protectedPatterns: readProtectedPatterns(parsed),
+    ...withOptionalConfig("sectionBalance", readSectionBalance(parsed)),
   };
 }
 
@@ -51,6 +54,13 @@ export function defaultConfig(): CadenceCliConfig {
     sectionRules: {},
     protectedPatterns: [],
   };
+}
+
+function withOptionalConfig<Key extends string, Value>(
+  key: Key,
+  value: Value | undefined,
+): Record<Key, Value> | Record<string, never> {
+  return value === undefined ? {} : { [key]: value } as Record<Key, Value>;
 }
 
 function parseJsonc(contents: string, configPath: string): unknown {
@@ -291,6 +301,57 @@ function readProtectedPatterns(config: unknown): readonly RegExp[] {
       );
     }
   });
+}
+
+function readSectionBalance(config: unknown): SectionBalanceOptions | undefined {
+  if (!isRecord(config) || config.sectionBalance === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.sectionBalance)) {
+    throw new Error("cadence-lint: config sectionBalance must be an object");
+  }
+
+  const measure = config.sectionBalance.measure ?? "words";
+  if (measure !== "words" && measure !== "sentences" && measure !== "paragraphs") {
+    throw new Error(
+      "cadence-lint: config sectionBalance.measure must be words, sentences, or paragraphs",
+    );
+  }
+
+  const ratio = config.sectionBalance.maxLargestToSmallestRatio;
+  if (typeof ratio !== "number" || ratio <= 0) {
+    throw new Error(
+      "cadence-lint: config sectionBalance.maxLargestToSmallestRatio must be a positive number",
+    );
+  }
+
+  return {
+    measure,
+    maxLargestToSmallestRatio: ratio,
+    ...withOptionalConfig(
+      "ignoreHeadings",
+      readStringArray(
+        config.sectionBalance.ignoreHeadings,
+        "cadence-lint: config sectionBalance.ignoreHeadings must be an array of strings",
+      ),
+    ),
+  };
+}
+
+function readStringArray(
+  value: unknown,
+  errorMessage: string,
+): readonly string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(errorMessage);
+  }
+
+  return value;
 }
 
 function stripJsonComments(contents: string): string {
