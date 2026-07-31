@@ -624,6 +624,50 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("loads required heading presence rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "requiredHeadings": ["Introduction", "Argument", "Evidence", "Conclusion"]',
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "Open.",
+        "",
+        "## Argument",
+        "",
+        "Claim.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Required heading 'Evidence' is missing.",
+          expectedStructures: ["Introduction", "Argument", "Evidence", "Conclusion"],
+        }),
+        expect.objectContaining({
+          message: "Required heading 'Conclusion' is missing.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
   it("loads title rules from cadence.config.jsonc", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "post.md");

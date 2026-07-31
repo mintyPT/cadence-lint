@@ -567,6 +567,119 @@ describe("lintMarkdown", () => {
     expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
   });
 
+  it("passes documents containing all configured required headings", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "Open.",
+        "",
+        "## Argument",
+        "",
+        "Claim.",
+        "",
+        "## Evidence",
+        "",
+        "Support.",
+        "",
+        "## Conclusion",
+        "",
+        "Close.",
+      ].join("\n"),
+      {
+        requiredHeadings: ["Introduction", "Argument", "Evidence", "Conclusion"],
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("reports missing configured required headings", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "Open.",
+        "",
+        "## Argument",
+        "",
+        "Claim.",
+      ].join("\n"),
+      {
+        filePath: "essay.md",
+        requiredHeadings: ["Introduction", "Argument", "Evidence", "Conclusion"],
+      },
+    );
+
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Required heading 'Evidence' is missing.",
+          location: {
+            filePath: "essay.md",
+            line: 1,
+            column: 1,
+          },
+          observedStructure: "Introduction -> Argument",
+          expectedStructures: ["Introduction", "Argument", "Evidence", "Conclusion"],
+        }),
+        expect.objectContaining({
+          message: "Required heading 'Conclusion' is missing.",
+        }),
+      ]),
+    );
+  });
+
+  it("allows extra headings in required heading checks", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "Open.",
+        "",
+        "## Aside",
+        "",
+        "Extra.",
+        "",
+        "## Conclusion",
+        "",
+        "Close.",
+      ].join("\n"),
+      {
+        requiredHeadings: ["Introduction", "Conclusion"],
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("matches required headings by normalized heading id", () => {
+    const result = lintMarkdown("## Main Argument\n\nClaim.\n", {
+      requiredHeadings: ["main-argument"],
+    });
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("runs required heading checks without heading order validation", () => {
+    const result = lintMarkdown(
+      [
+        "## Conclusion",
+        "",
+        "Close.",
+        "",
+        "## Introduction",
+        "",
+        "Open.",
+      ].join("\n"),
+      {
+        requiredHeadings: ["Introduction", "Conclusion"],
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
   it("passes titles within configured word and character limits", () => {
     const result = lintMarkdown("# Clear Short Title\n", {
       title: {

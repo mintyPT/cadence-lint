@@ -27,6 +27,7 @@ export interface CadenceCliConfig {
   sectionBalance?: SectionBalanceOptions;
   listBalance?: ListBalanceOptions;
   headingOrder?: readonly string[];
+  requiredHeadings?: readonly string[];
   title?: TitleOptions;
   introduction?: IntroductionOptions;
   wording?: WordingOptions;
@@ -71,6 +72,13 @@ export async function loadCadenceConfig(options: {
       readStringArray(
         isRecord(parsed) ? parsed.headingOrder : undefined,
         "cadence-lint: config headingOrder must be an array of strings",
+      ),
+    ),
+    ...withOptionalConfig(
+      "requiredHeadings",
+      readStringArray(
+        isRecord(parsed) ? parsed.requiredHeadings : undefined,
+        "cadence-lint: config requiredHeadings must be an array of strings",
       ),
     ),
     ...withOptionalConfig("title", readTitle(parsed)),

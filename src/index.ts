@@ -188,6 +188,7 @@ export interface LintMarkdownOptions {
   sectionBalance?: SectionBalanceOptions;
   listBalance?: ListBalanceOptions;
   headingOrder?: readonly string[];
+  requiredHeadings?: readonly string[];
   title?: TitleOptions;
   introduction?: IntroductionOptions;
   wording?: WordingOptions;
@@ -243,6 +244,7 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
       ),
       ...lintListBalance(document, filePath, options.listBalance),
       ...lintHeadingOrder(document, filePath, options.headingOrder),
+      ...lintRequiredHeadings(document, filePath, options.requiredHeadings),
       ...lintTitle(document, filePath, options.title),
       ...lintIntroduction(document, filePath, options.introduction, analyzeParagraph),
       ...lintWording(document, filePath, options.wording),
@@ -596,6 +598,34 @@ function lintHeadingOrder(
   }
 
   return [];
+}
+
+function lintRequiredHeadings(
+  document: MarkdownDocument,
+  filePath: string,
+  requiredHeadings: readonly string[] | undefined,
+): LintDiagnostic[] {
+  if (requiredHeadings === undefined || requiredHeadings.length === 0) {
+    return [];
+  }
+
+  const observedHeadingIds = new Set(
+    document.headings.map((heading) => normalizeHeadingId(heading.text)),
+  );
+
+  return requiredHeadings
+    .filter((heading) => !observedHeadingIds.has(normalizeHeadingId(heading)))
+    .map((heading) => ({
+      severity: "error",
+      message: `Required heading '${heading}' is missing.`,
+      location: {
+        filePath,
+        line: 1,
+        column: 1,
+      },
+      observedStructure: document.headings.map((item) => item.text).join(" -> "),
+      expectedStructures: requiredHeadings,
+    }));
 }
 
 function lintTitle(

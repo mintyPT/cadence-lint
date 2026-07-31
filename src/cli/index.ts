@@ -89,6 +89,7 @@ program.action(async (files: string[], options: CliOptions) => {
       sectionBalance: config.sectionBalance,
       listBalance: config.listBalance,
       headingOrder: config.headingOrder,
+      requiredHeadings: config.requiredHeadings,
       title: config.title,
       introduction: config.introduction,
       wording: config.wording,
