@@ -7,6 +7,8 @@ import {
   type ListBalanceOptions,
   type ListsOptions,
   type SectionBalanceOptions,
+  type SectionLengthLimit,
+  type SectionLengthOptions,
   type SectionStructure,
   type SectionRule,
   type SectionStructureRules,
@@ -31,6 +33,7 @@ export interface CadenceCliConfig {
   lists?: ListsOptions;
   transitions?: TransitionsOptions;
   headings?: HeadingsOptions;
+  sectionLength?: SectionLengthOptions;
 }
 
 export async function loadCadenceConfig(options: {
@@ -76,6 +79,7 @@ export async function loadCadenceConfig(options: {
     ...withOptionalConfig("lists", readLists(parsed)),
     ...withOptionalConfig("transitions", readTransitions(parsed)),
     ...withOptionalConfig("headings", readHeadings(parsed)),
+    ...withOptionalConfig("sectionLength", readSectionLength(parsed)),
   };
 }
 
@@ -679,6 +683,66 @@ function readHeadings(config: unknown): HeadingsOptions | undefined {
       readOptionalBoolean(
         config.headings.singleH1,
         "cadence-lint: config headings.singleH1 must be a boolean",
+      ),
+    ),
+  };
+}
+
+function readSectionLength(config: unknown): SectionLengthOptions | undefined {
+  if (!isRecord(config) || config.sectionLength === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.sectionLength)) {
+    throw new Error("cadence-lint: config sectionLength must be an object");
+  }
+
+  const sectionLength: SectionLengthOptions = {};
+
+  for (const [heading, value] of Object.entries(config.sectionLength)) {
+    sectionLength[heading] = readSectionLengthLimit(heading, value);
+  }
+
+  return sectionLength;
+}
+
+function readSectionLengthLimit(
+  heading: string,
+  value: unknown,
+): SectionLengthLimit {
+  if (!isRecord(value)) {
+    throw new Error(
+      `cadence-lint: config sectionLength.${heading} must be an object`,
+    );
+  }
+
+  return {
+    ...withOptionalConfig(
+      "maxParagraphs",
+      readOptionalPositiveInteger(
+        value.maxParagraphs,
+        `cadence-lint: config sectionLength.${heading}.maxParagraphs must be a positive integer`,
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxWords",
+      readOptionalPositiveInteger(
+        value.maxWords,
+        `cadence-lint: config sectionLength.${heading}.maxWords must be a positive integer`,
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxSentences",
+      readOptionalPositiveInteger(
+        value.maxSentences,
+        `cadence-lint: config sectionLength.${heading}.maxSentences must be a positive integer`,
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxListItems",
+      readOptionalPositiveInteger(
+        value.maxListItems,
+        `cadence-lint: config sectionLength.${heading}.maxListItems must be a positive integer`,
       ),
     ),
   };

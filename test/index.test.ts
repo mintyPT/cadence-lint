@@ -1163,6 +1163,125 @@ describe("lintMarkdown", () => {
     expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
   });
 
+  it("passes sections within configured length limits", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "One sentence.",
+        "",
+        "- Add one",
+      ].join("\n"),
+      {
+        sectionLength: {
+          default: {
+            maxParagraphs: 1,
+            maxWords: 4,
+            maxSentences: 1,
+            maxListItems: 1,
+          },
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("reports sections exceeding configured length limits", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "One sentence. Another sentence.",
+        "",
+        "Second paragraph.",
+        "",
+        "- Add one",
+        "- Add two",
+      ].join("\n"),
+      {
+        filePath: "essay.md",
+        sectionLength: {
+          default: {
+            maxParagraphs: 1,
+            maxWords: 4,
+            maxSentences: 2,
+            maxListItems: 1,
+          },
+        },
+      },
+    );
+
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Section 'Introduction' has 2 paragraphs; expected <= 1.",
+          location: {
+            filePath: "essay.md",
+            line: 1,
+            column: 1,
+          },
+          observedStructure: "2 paragraphs",
+          expectedStructures: ["paragraphs <= 1"],
+        }),
+        expect.objectContaining({
+          message: "Section 'Introduction' has 6 words; expected <= 4.",
+          observedStructure: "6 words",
+          expectedStructures: ["words <= 4"],
+        }),
+        expect.objectContaining({
+          message: "Section 'Introduction' has 3 sentences; expected <= 2.",
+          observedStructure: "3 sentences",
+          expectedStructures: ["sentences <= 2"],
+        }),
+        expect.objectContaining({
+          message: "Section 'Introduction' has 2 list items; expected <= 1.",
+          observedStructure: "2 list items",
+          expectedStructures: ["list items <= 1"],
+        }),
+      ]),
+    );
+  });
+
+  it("uses heading-specific section length overrides before defaults", () => {
+    const result = lintMarkdown(
+      [
+        "## Introduction",
+        "",
+        "One sentence.",
+        "",
+        "Second paragraph.",
+        "",
+        "## Body",
+        "",
+        "One sentence.",
+        "",
+        "Second paragraph.",
+      ].join("\n"),
+      {
+        sectionLength: {
+          default: {
+            maxParagraphs: 1,
+          },
+          Introduction: {
+            maxParagraphs: 2,
+          },
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Section 'Body' has 2 paragraphs; expected <= 1.",
+      }),
+    );
+    expect(result.diagnostics).not.toContainEqual(
+      expect.objectContaining({
+        message: "Section 'Introduction' has 2 paragraphs; expected <= 1.",
+      }),
+    );
+  });
+
   it("passes heading sections whose paragraph sentence structure matches an allowed pattern", () => {
     const result = lintMarkdown(
       [

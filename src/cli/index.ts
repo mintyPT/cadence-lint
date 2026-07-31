@@ -95,6 +95,7 @@ program.action(async (files: string[], options: CliOptions) => {
       lists: config.lists,
       transitions: config.transitions,
       headings: config.headings,
+      sectionLength: config.sectionLength,
     });
     diagnostics.push(...result.diagnostics);
   }

@@ -157,6 +157,18 @@ export interface HeadingsOptions {
   singleH1?: boolean;
 }
 
+export interface SectionLengthLimit {
+  maxParagraphs?: number;
+  maxWords?: number;
+  maxSentences?: number;
+  maxListItems?: number;
+}
+
+export interface SectionLengthOptions {
+  default?: SectionLengthLimit;
+  [heading: string]: SectionLengthLimit | undefined;
+}
+
 export const defaultVagueTerms = [
   "improve",
   "better",
@@ -182,6 +194,7 @@ export interface LintMarkdownOptions {
   lists?: ListsOptions;
   transitions?: TransitionsOptions;
   headings?: HeadingsOptions;
+  sectionLength?: SectionLengthOptions;
 }
 
 export interface LintResult {
@@ -236,6 +249,12 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
       ...lintLists(document, filePath, options.lists),
       ...lintTransitions(document, filePath, options.transitions, analyzeParagraph),
       ...lintHeadings(document, filePath, options.headings),
+      ...lintSectionLength(
+        document,
+        filePath,
+        options.sectionLength,
+        analyzeParagraph,
+      ),
     ],
   };
 }
@@ -1005,6 +1024,83 @@ function lintHeadings(
   }
 
   return diagnostics;
+}
+
+function lintSectionLength(
+  document: MarkdownDocument,
+  filePath: string,
+  options: SectionLengthOptions | undefined,
+  analyzeParagraph: ParagraphAnalyzer,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+
+  for (const section of document.sections) {
+    const limit = findSectionLengthLimit(options, section.heading.text);
+
+    if (limit === undefined) {
+      continue;
+    }
+
+    const measures = {
+      paragraphs: section.paragraphs.length,
+      words: measureSection(section, "words", analyzeParagraph),
+      sentences: measureSection(section, "sentences", analyzeParagraph),
+      listItems: section.blocks
+        .filter((block): block is MarkdownContentBlock & { type: "list" } => block.type === "list")
+        .reduce((total, list) => total + list.items.length, 0),
+    };
+
+    diagnostics.push(
+      ...sectionLengthDiagnostics(filePath, section, "paragraphs", measures.paragraphs, limit.maxParagraphs),
+      ...sectionLengthDiagnostics(filePath, section, "words", measures.words, limit.maxWords),
+      ...sectionLengthDiagnostics(filePath, section, "sentences", measures.sentences, limit.maxSentences),
+      ...sectionLengthDiagnostics(filePath, section, "list items", measures.listItems, limit.maxListItems),
+    );
+  }
+
+  return diagnostics;
+}
+
+function findSectionLengthLimit(
+  options: SectionLengthOptions,
+  heading: string,
+): SectionLengthLimit | undefined {
+  return options[heading] ?? options[normalizeHeadingId(heading)] ?? options.default;
+}
+
+function sectionLengthDiagnostics(
+  filePath: string,
+  section: MarkdownSection,
+  measure: string,
+  observed: number,
+  limit: number | undefined,
+): LintDiagnostic[] {
+  if (limit === undefined || observed <= limit) {
+    return [];
+  }
+
+  return [
+    {
+      severity: "error",
+      message: `Section '${section.heading.text}' has ${observed} ${measure}; expected <= ${limit}.`,
+      location: {
+        filePath,
+        line: section.heading.line,
+        column: section.heading.column,
+      },
+      section: {
+        title: section.heading.text,
+        line: section.heading.line,
+        level: section.heading.depth,
+      },
+      observedStructure: `${observed} ${measure}`,
+      expectedStructures: [`${measure} <= ${limit}`],
+    },
+  ];
 }
 
 function headingDiagnostic(

@@ -917,6 +917,54 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("loads section length rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "essay.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "sectionLength": {',
+        '    "default": { "maxParagraphs": 1, "maxWords": 6 },',
+        '    "Introduction": { "maxParagraphs": 3, "maxWords": 4 }',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "## Introduction",
+        "",
+        "One two three four five.",
+        "",
+        "## Body",
+        "",
+        "One sentence.",
+        "",
+        "Second paragraph.",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Section 'Introduction' has 5 words; expected <= 4.",
+        }),
+        expect.objectContaining({
+          message: "Section 'Body' has 2 paragraphs; expected <= 1.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
   it("loads described section structures from cadence.config.jsonc", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");
