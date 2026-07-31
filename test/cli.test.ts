@@ -751,6 +751,56 @@ describe("cli", () => {
     );
   }, cliTestTimeout);
 
+  it("loads list discipline rules from cadence.config.jsonc", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
+    const filePath = join(directory, "post.md");
+    await writeFile(
+      join(directory, "cadence.config.jsonc"),
+      [
+        "{",
+        '  "lists": {',
+        '    "maxItems": 1,',
+        '    "maxWordsPerItem": 3,',
+        '    "maxDepth": 1,',
+        '    "allowedPrefixes": ["Add"]',
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+    await writeFile(
+      filePath,
+      [
+        "- Add concise point",
+        "- Drift into too many words",
+        "  - Add nested point",
+      ].join("\n"),
+    );
+
+    const result = await execa(
+      "tsx",
+      [join(process.cwd(), "src/cli/index.ts"), "--format", "json", filePath],
+      { cwd: directory, reject: false },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "List has 2 items; expected <= 1.",
+        }),
+        expect.objectContaining({
+          message: "List item has 5 words; expected <= 3.",
+        }),
+        expect.objectContaining({
+          message: "List item depth is 2; expected <= 1.",
+        }),
+        expect.objectContaining({
+          message: "List item does not start with an allowed prefix.",
+        }),
+      ]),
+    );
+  }, cliTestTimeout);
+
   it("loads described section structures from cadence.config.jsonc", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cadence-lint-"));
     const filePath = join(directory, "guide.md");

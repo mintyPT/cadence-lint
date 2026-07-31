@@ -4,6 +4,7 @@ import {
   parseStructurePattern,
   type IntroductionOptions,
   type ListBalanceOptions,
+  type ListsOptions,
   type SectionBalanceOptions,
   type SectionStructure,
   type SectionRule,
@@ -24,6 +25,7 @@ export interface CadenceCliConfig {
   title?: TitleOptions;
   introduction?: IntroductionOptions;
   wording?: WordingOptions;
+  lists?: ListsOptions;
 }
 
 export async function loadCadenceConfig(options: {
@@ -65,6 +67,7 @@ export async function loadCadenceConfig(options: {
     ...withOptionalConfig("title", readTitle(parsed)),
     ...withOptionalConfig("introduction", readIntroduction(parsed)),
     ...withOptionalConfig("wording", readWording(parsed)),
+    ...withOptionalConfig("lists", readLists(parsed)),
   };
 }
 
@@ -528,6 +531,47 @@ function readWording(config: unknown): WordingOptions | undefined {
       readOptionalBoolean(
         config.wording.useDefaults,
         "cadence-lint: config wording.useDefaults must be a boolean",
+      ),
+    ),
+  };
+}
+
+function readLists(config: unknown): ListsOptions | undefined {
+  if (!isRecord(config) || config.lists === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.lists)) {
+    throw new Error("cadence-lint: config lists must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "maxItems",
+      readOptionalPositiveInteger(
+        config.lists.maxItems,
+        "cadence-lint: config lists.maxItems must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxWordsPerItem",
+      readOptionalPositiveInteger(
+        config.lists.maxWordsPerItem,
+        "cadence-lint: config lists.maxWordsPerItem must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxDepth",
+      readOptionalPositiveInteger(
+        config.lists.maxDepth,
+        "cadence-lint: config lists.maxDepth must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "allowedPrefixes",
+      readStringArray(
+        config.lists.allowedPrefixes,
+        "cadence-lint: config lists.allowedPrefixes must be an array of strings",
       ),
     ),
   };

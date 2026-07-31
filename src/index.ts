@@ -135,6 +135,13 @@ export interface WordingOptions {
   useDefaults?: boolean;
 }
 
+export interface ListsOptions {
+  maxItems?: number;
+  maxWordsPerItem?: number;
+  maxDepth?: number;
+  allowedPrefixes?: readonly string[];
+}
+
 export const defaultVagueTerms = [
   "improve",
   "better",
@@ -156,6 +163,7 @@ export interface LintMarkdownOptions {
   title?: TitleOptions;
   introduction?: IntroductionOptions;
   wording?: WordingOptions;
+  lists?: ListsOptions;
 }
 
 export interface LintResult {
@@ -195,6 +203,7 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
         protectedPatterns: options.protectedPatterns ?? [],
       }),
       ...lintWording(markdown, filePath, options.wording),
+      ...lintLists(document, filePath, options.lists),
     ],
   };
 }
@@ -696,6 +705,90 @@ function lintWording(
       left.location.line - right.location.line ||
       left.location.column - right.location.column,
   );
+}
+
+function lintLists(
+  document: MarkdownDocument,
+  filePath: string,
+  options: ListsOptions | undefined,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [];
+
+  for (const list of document.lists) {
+    const topLevelItemCount = list.items.filter((item) => item.depth === 1).length;
+
+    if (options.maxItems !== undefined && topLevelItemCount > options.maxItems) {
+      diagnostics.push({
+        severity: "error",
+        message: `List has ${topLevelItemCount} items; expected <= ${options.maxItems}.`,
+        location: {
+          filePath,
+          line: list.line,
+          column: list.column,
+        },
+        observedStructure: `${topLevelItemCount} items`,
+        expectedStructures: [`items <= ${options.maxItems}`],
+      });
+    }
+
+    for (const item of list.items) {
+      if (options.maxWordsPerItem !== undefined) {
+        const wordCount = countWords(item.text);
+
+        if (wordCount > options.maxWordsPerItem) {
+          diagnostics.push({
+            severity: "error",
+            message: `List item has ${wordCount} words; expected <= ${options.maxWordsPerItem}.`,
+            location: {
+              filePath,
+              line: item.line,
+              column: item.column,
+            },
+            observedStructure: `${wordCount} words`,
+            expectedStructures: [`words per item <= ${options.maxWordsPerItem}`],
+          });
+        }
+      }
+
+      if (options.maxDepth !== undefined && item.depth > options.maxDepth) {
+        diagnostics.push({
+          severity: "error",
+          message: `List item depth is ${item.depth}; expected <= ${options.maxDepth}.`,
+          location: {
+            filePath,
+            line: item.line,
+            column: item.column,
+          },
+          observedStructure: `depth ${item.depth}`,
+          expectedStructures: [`depth <= ${options.maxDepth}`],
+        });
+      }
+
+      if (
+        options.allowedPrefixes !== undefined &&
+        options.allowedPrefixes.length > 0 &&
+        !options.allowedPrefixes.some((prefix) => item.text.startsWith(prefix))
+      ) {
+        diagnostics.push({
+          severity: "error",
+          message: "List item does not start with an allowed prefix.",
+          location: {
+            filePath,
+            line: item.line,
+            column: item.column,
+          },
+          observedStructure: item.text,
+          expectedStructures: options.allowedPrefixes,
+        });
+      }
+    }
+  }
+
+  return diagnostics;
 }
 
 function escapeRegExp(value: string): string {

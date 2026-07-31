@@ -852,6 +852,102 @@ describe("lintMarkdown", () => {
     );
   });
 
+  it("passes lists within item count, word count, nesting, and prefix limits", () => {
+    const result = lintMarkdown(
+      [
+        "- Add concise context",
+        "- Update clear examples",
+      ].join("\n"),
+      {
+        lists: {
+          maxItems: 3,
+          maxWordsPerItem: 4,
+          maxDepth: 1,
+          allowedPrefixes: ["Add", "Update"],
+        },
+      },
+    );
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("reports lists with too many items", () => {
+    const result = lintMarkdown(
+      [
+        "- Add one",
+        "- Add two",
+        "- Add three",
+      ].join("\n"),
+      {
+        lists: {
+          maxItems: 2,
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "List has 3 items; expected <= 2.",
+        observedStructure: "3 items",
+        expectedStructures: ["items <= 2"],
+      }),
+    );
+  });
+
+  it("reports list items with too many words", () => {
+    const result = lintMarkdown("- Add one two three four five\n", {
+      lists: {
+        maxWordsPerItem: 4,
+      },
+    });
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "List item has 6 words; expected <= 4.",
+        observedStructure: "6 words",
+        expectedStructures: ["words per item <= 4"],
+      }),
+    );
+  });
+
+  it("reports nested list items deeper than the configured depth", () => {
+    const result = lintMarkdown(
+      [
+        "- Add parent",
+        "  - Add child",
+      ].join("\n"),
+      {
+        lists: {
+          maxDepth: 1,
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "List item depth is 2; expected <= 1.",
+        observedStructure: "depth 2",
+        expectedStructures: ["depth <= 1"],
+      }),
+    );
+  });
+
+  it("reports list items that do not start with an allowed prefix", () => {
+    const result = lintMarkdown("1. Remove stale prose\n2. Drift away\n", {
+      lists: {
+        allowedPrefixes: ["Add", "Remove"],
+      },
+    });
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "List item does not start with an allowed prefix.",
+        observedStructure: "Drift away",
+        expectedStructures: ["Add", "Remove"],
+      }),
+    );
+  });
+
   it("reports anchored expected structure details with placement on mismatches", () => {
     const markdown = [
       "<!-- cadence:overview -->",
