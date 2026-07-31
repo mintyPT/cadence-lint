@@ -176,3 +176,59 @@ exit=1
 ```
 
 Together these runs cover the new config keys: `sectionBalance`, `listBalance`, `headingOrder`, `title`, `introduction`, `lists`, `transitions`, `headings`, `headingSections`, and `wording`.
+
+After adding the final two essay/blog rules, this extra fixture demonstrates required heading presence and maximum section length in the same executable transcript.
+
+```bash
+cat > .showboat-essay-blog-features/length-and-required-headings.md <<'MARKDOWN'
+## Introduction
+Opening context. It names the problem.
+
+Second paragraph exceeds the introduction paragraph limit.
+
+## Argument
+This section has too many words for the default section length rule.
+
+- Add one item
+- Add two items
+MARKDOWN
+cat > .showboat-essay-blog-features/length-and-required-headings.config.jsonc <<'JSONC'
+{
+  "requiredHeadings": ["Introduction", "Argument", "Evidence", "Conclusion"],
+  "sectionLength": {
+    "default": { "maxWords": 8, "maxListItems": 1 },
+    "Introduction": { "maxParagraphs": 1, "maxSentences": 2 }
+  }
+}
+JSONC
+find .showboat-essay-blog-features -maxdepth 1 -type f | sort
+```
+
+```output
+.showboat-essay-blog-features/length-and-required-headings.config.jsonc
+.showboat-essay-blog-features/length-and-required-headings.md
+.showboat-essay-blog-features/structure.config.jsonc
+.showboat-essay-blog-features/structure.md
+.showboat-essay-blog-features/wording-and-heading-sections.config.jsonc
+.showboat-essay-blog-features/wording-and-heading-sections.md
+```
+
+```bash
+set +e
+npx tsx src/cli/index.ts --config .showboat-essay-blog-features/length-and-required-headings.config.jsonc .showboat-essay-blog-features/length-and-required-headings.md
+exit_code=$?
+echo "exit=$exit_code"
+```
+
+```output
+.showboat-essay-blog-features/length-and-required-headings.md:2:1 warning Normal paragraph is not covered by cadence markers.
+.showboat-essay-blog-features/length-and-required-headings.md:4:1 warning Normal paragraph is not covered by cadence markers.
+.showboat-essay-blog-features/length-and-required-headings.md:7:1 warning Normal paragraph is not covered by cadence markers.
+.showboat-essay-blog-features/length-and-required-headings.md:1:1 error Required heading 'Evidence' is missing. [observed: Introduction -> Argument, expected: Introduction | Argument | Evidence | Conclusion]
+.showboat-essay-blog-features/length-and-required-headings.md:1:1 error Required heading 'Conclusion' is missing. [observed: Introduction -> Argument, expected: Introduction | Argument | Evidence | Conclusion]
+.showboat-essay-blog-features/length-and-required-headings.md:1:1 error Section 'Introduction' has 2 paragraphs; expected <= 1. [section: Introduction, heading line: 1, level: 2, observed: 2 paragraphs, expected: paragraphs <= 1]
+.showboat-essay-blog-features/length-and-required-headings.md:1:1 error Section 'Introduction' has 3 sentences; expected <= 2. [section: Introduction, heading line: 1, level: 2, observed: 3 sentences, expected: sentences <= 2]
+.showboat-essay-blog-features/length-and-required-headings.md:6:1 error Section 'Argument' has 12 words; expected <= 8. [section: Argument, heading line: 6, level: 2, observed: 12 words, expected: words <= 8]
+.showboat-essay-blog-features/length-and-required-headings.md:6:1 error Section 'Argument' has 2 list items; expected <= 1. [section: Argument, heading line: 6, level: 2, observed: 2 list items, expected: list items <= 1]
+exit=1
+```

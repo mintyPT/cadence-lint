@@ -1,0 +1,7 @@
+{
+  "requiredHeadings": ["Introduction", "Argument", "Evidence", "Conclusion"],
+  "sectionLength": {
+    "default": { "maxWords": 8, "maxListItems": 1 },
+    "Introduction": { "maxParagraphs": 1, "maxSentences": 2 }
+  }
+}
