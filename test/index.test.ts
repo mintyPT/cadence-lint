@@ -567,6 +567,101 @@ describe("lintMarkdown", () => {
     expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
   });
 
+  it("passes titles within configured word and character limits", () => {
+    const result = lintMarkdown("# Clear Short Title\n", {
+      title: {
+        maxWords: 4,
+        maxCharacters: 40,
+      },
+    });
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("reports titles that exceed configured word or character limits", () => {
+    const result = lintMarkdown("# This Title Is Much Too Long For The Rule\n", {
+      filePath: "post.md",
+      title: {
+        maxWords: 5,
+        maxCharacters: 20,
+      },
+    });
+
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "Title has 9 words; expected <= 5.",
+          location: {
+            filePath: "post.md",
+            line: 1,
+            column: 1,
+          },
+          observedStructure: "9 words",
+          expectedStructures: ["words <= 5"],
+        }),
+        expect.objectContaining({
+          message: "Title has 40 characters; expected <= 20.",
+          observedStructure: "40 characters",
+          expectedStructures: ["characters <= 20"],
+        }),
+      ]),
+    );
+  });
+
+  it("enforces subtitle limits when subtitles are allowed", () => {
+    const result = lintMarkdown(
+      [
+        "# Main Title",
+        "",
+        "A subtitle with too many words.",
+      ].join("\n"),
+      {
+        title: {
+          allowSubtitle: true,
+          maxSubtitleWords: 4,
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        message: "Subtitle has 6 words; expected <= 4.",
+        location: {
+          filePath: "<input>",
+          line: 3,
+          column: 1,
+        },
+      }),
+    );
+  });
+
+  it("reports subtitles when subtitles are disallowed", () => {
+    const result = lintMarkdown(
+      [
+        "# Main Title",
+        "",
+        "A subtitle.",
+      ].join("\n"),
+      {
+        title: {
+          allowSubtitle: false,
+        },
+      },
+    );
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        message: "Subtitle is not allowed by configured title rules.",
+        location: {
+          filePath: "<input>",
+          line: 3,
+          column: 1,
+        },
+      }),
+    );
+  });
+
   it("reports anchored expected structure details with placement on mismatches", () => {
     const markdown = [
       "<!-- cadence:overview -->",

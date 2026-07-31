@@ -112,6 +112,16 @@ export interface ListBalanceOptions {
   requireParagraphAfterList?: boolean;
 }
 
+export interface TitleOptions {
+  minWords?: number;
+  maxWords?: number;
+  minCharacters?: number;
+  maxCharacters?: number;
+  allowSubtitle?: boolean;
+  maxSubtitleWords?: number;
+  maxSubtitleCharacters?: number;
+}
+
 export interface LintMarkdownOptions {
   filePath?: string;
   language?: string;
@@ -121,6 +131,7 @@ export interface LintMarkdownOptions {
   sectionBalance?: SectionBalanceOptions;
   listBalance?: ListBalanceOptions;
   headingOrder?: readonly string[];
+  title?: TitleOptions;
 }
 
 export interface LintResult {
@@ -154,6 +165,7 @@ export function lintMarkdown(markdown: string, options: LintMarkdownOptions = {}
       }),
       ...lintListBalance(document, filePath, options.listBalance),
       ...lintHeadingOrder(document, filePath, options.headingOrder),
+      ...lintTitle(document, filePath, options.title),
     ],
   };
 }
@@ -433,6 +445,124 @@ function lintHeadingOrder(
   }
 
   return [];
+}
+
+function lintTitle(
+  document: MarkdownDocument,
+  filePath: string,
+  options: TitleOptions | undefined,
+): LintDiagnostic[] {
+  if (options === undefined) {
+    return [];
+  }
+
+  const title = document.headings.find((heading) => heading.depth === 1);
+  if (title === undefined) {
+    return [];
+  }
+
+  const diagnostics: LintDiagnostic[] = [
+    ...lintTextBounds("Title", title.text, title.line, title.column, filePath, {
+      minWords: options.minWords,
+      maxWords: options.maxWords,
+      minCharacters: options.minCharacters,
+      maxCharacters: options.maxCharacters,
+    }),
+  ];
+  const subtitle = findSubtitleParagraph(document, title);
+
+  if (subtitle === undefined) {
+    return diagnostics;
+  }
+
+  if (options.allowSubtitle === false) {
+    diagnostics.push({
+      severity: "error",
+      message: "Subtitle is not allowed by configured title rules.",
+      location: {
+        filePath,
+        line: subtitle.line,
+        column: subtitle.column,
+      },
+    });
+    return diagnostics;
+  }
+
+  diagnostics.push(
+    ...lintTextBounds("Subtitle", subtitle.text, subtitle.line, subtitle.column, filePath, {
+      maxWords: options.maxSubtitleWords,
+      maxCharacters: options.maxSubtitleCharacters,
+    }),
+  );
+
+  return diagnostics;
+}
+
+function findSubtitleParagraph(
+  document: MarkdownDocument,
+  title: { line: number },
+): MarkdownParagraph | undefined {
+  const titleSection = document.sections.find((section) => section.heading.line === title.line);
+
+  return titleSection?.paragraphs[0];
+}
+
+function lintTextBounds(
+  label: "Title" | "Subtitle",
+  text: string,
+  line: number,
+  column: number,
+  filePath: string,
+  options: {
+    minWords?: number;
+    maxWords?: number;
+    minCharacters?: number;
+    maxCharacters?: number;
+  },
+): LintDiagnostic[] {
+  const diagnostics: LintDiagnostic[] = [];
+  const wordCount = countWords(text);
+  const characterCount = text.length;
+
+  if (options.minWords !== undefined && wordCount < options.minWords) {
+    diagnostics.push(textBoundDiagnostic(label, "words", wordCount, `>= ${options.minWords}`, filePath, line, column));
+  }
+
+  if (options.maxWords !== undefined && wordCount > options.maxWords) {
+    diagnostics.push(textBoundDiagnostic(label, "words", wordCount, `<= ${options.maxWords}`, filePath, line, column));
+  }
+
+  if (options.minCharacters !== undefined && characterCount < options.minCharacters) {
+    diagnostics.push(textBoundDiagnostic(label, "characters", characterCount, `>= ${options.minCharacters}`, filePath, line, column));
+  }
+
+  if (options.maxCharacters !== undefined && characterCount > options.maxCharacters) {
+    diagnostics.push(textBoundDiagnostic(label, "characters", characterCount, `<= ${options.maxCharacters}`, filePath, line, column));
+  }
+
+  return diagnostics;
+}
+
+function textBoundDiagnostic(
+  label: "Title" | "Subtitle",
+  unit: "words" | "characters",
+  observed: number,
+  expected: string,
+  filePath: string,
+  line: number,
+  column: number,
+): LintDiagnostic {
+  return {
+    severity: "error",
+    message: `${label} has ${observed} ${unit}; expected ${expected}.`,
+    location: {
+      filePath,
+      line,
+      column,
+    },
+    observedStructure: `${observed} ${unit}`,
+    expectedStructures: [`${unit} ${expected}`],
+  };
 }
 
 function hasAdjacentParagraph(

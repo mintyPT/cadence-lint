@@ -9,6 +9,7 @@ import {
   type SectionStructureRules,
   type SectionStructureSegment,
   type SectionStructurePattern,
+  type TitleOptions,
 } from "../index.js";
 
 export interface CadenceCliConfig {
@@ -18,6 +19,7 @@ export interface CadenceCliConfig {
   sectionBalance?: SectionBalanceOptions;
   listBalance?: ListBalanceOptions;
   headingOrder?: readonly string[];
+  title?: TitleOptions;
 }
 
 export async function loadCadenceConfig(options: {
@@ -56,6 +58,7 @@ export async function loadCadenceConfig(options: {
         "cadence-lint: config headingOrder must be an array of strings",
       ),
     ),
+    ...withOptionalConfig("title", readTitle(parsed)),
   };
 }
 
@@ -379,6 +382,68 @@ function readListBalance(config: unknown): ListBalanceOptions | undefined {
       readOptionalBoolean(
         config.listBalance.requireParagraphAfterList,
         "cadence-lint: config listBalance.requireParagraphAfterList must be a boolean",
+      ),
+    ),
+  };
+}
+
+function readTitle(config: unknown): TitleOptions | undefined {
+  if (!isRecord(config) || config.title === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(config.title)) {
+    throw new Error("cadence-lint: config title must be an object");
+  }
+
+  return {
+    ...withOptionalConfig(
+      "minWords",
+      readOptionalPositiveInteger(
+        config.title.minWords,
+        "cadence-lint: config title.minWords must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxWords",
+      readOptionalPositiveInteger(
+        config.title.maxWords,
+        "cadence-lint: config title.maxWords must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "minCharacters",
+      readOptionalPositiveInteger(
+        config.title.minCharacters,
+        "cadence-lint: config title.minCharacters must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxCharacters",
+      readOptionalPositiveInteger(
+        config.title.maxCharacters,
+        "cadence-lint: config title.maxCharacters must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "allowSubtitle",
+      readOptionalBoolean(
+        config.title.allowSubtitle,
+        "cadence-lint: config title.allowSubtitle must be a boolean",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxSubtitleWords",
+      readOptionalPositiveInteger(
+        config.title.maxSubtitleWords,
+        "cadence-lint: config title.maxSubtitleWords must be a positive integer",
+      ),
+    ),
+    ...withOptionalConfig(
+      "maxSubtitleCharacters",
+      readOptionalPositiveInteger(
+        config.title.maxSubtitleCharacters,
+        "cadence-lint: config title.maxSubtitleCharacters must be a positive integer",
       ),
     ),
   };
